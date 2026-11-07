@@ -1,0 +1,103 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
+<title>NEON OVERDRIVE — OASIS Circuit</title>
+<link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@600;800;900&family=Rajdhani:wght@500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/style.css" />
+</head>
+<body>
+<div id="app">
+  <canvas id="scene"></canvas>
+  <div id="vignette"></div>
+  <div id="scanlines"></div>
+  <div id="speedlines"></div>
+  <div id="flash"></div>
+
+  <!-- ============ HUD ============ -->
+  <div id="hud" class="hidden">
+    <div class="hud-top">
+      <div class="stat">
+        <span class="label">SCORE</span>
+        <span id="score" class="value">0</span>
+      </div>
+      <div class="stat center">
+        <span class="label">DISTANCE</span>
+        <span id="dist" class="value">0<em>m</em></span>
+      </div>
+      <div class="stat right">
+        <span class="label">SHIELDS</span>
+        <div id="shields" class="shields"></div>
+      </div>
+    </div>
+
+    <div id="turnhint" class="turnhint hidden">
+      <span class="arrow">❯</span><span class="txt">90°</span>
+    </div>
+
+    <div class="speedo">
+      <div class="speed-value"><span id="speed">0</span><em>KM/H</em></div>
+      <div class="bar"><div id="boostfill" class="fill"></div></div>
+      <div class="bar-label">BOOST CHARGE</div>
+    </div>
+
+    <div id="combo" class="combo">x1.0</div>
+    <div id="driftpop" class="driftpop hidden">DRIFT <b>+0</b></div>
+
+    <div class="touch-controls" id="touchControls">
+      <button class="tbtn left" data-act="left">◀</button>
+      <button class="tbtn drift" data-act="drift">DRIFT</button>
+      <button class="tbtn right" data-act="right">▶</button>
+    </div>
+    <button id="pauseBtn" class="icon-btn" title="Pause">❚❚</button>
+  </div>
+
+  <!-- ============ TITLE ============ -->
+  <div id="title" class="overlay">
+    <div class="logo">
+      <div class="logo-kicker">OASIS SECTOR 07 // HOVER CIRCUIT</div>
+      <h1>NEON<span>OVERDRIVE</span></h1>
+      <div class="logo-sub">ramps · tunnels · overpasses · 90° drifts</div>
+    </div>
+    <div class="controls">
+      <div class="ctrl"><kbd>A</kbd><kbd>D</kbd><span>steer</span></div>
+      <div class="ctrl"><kbd>SPACE</kbd><span>hold to drift &amp; charge boost</span></div>
+      <div class="ctrl"><kbd>SHIFT</kbd><span>release boost</span></div>
+      <div class="ctrl mobile-only"><span>or use the on-screen buttons</span></div>
+    </div>
+    <button id="startBtn" class="cta">ENTER THE CIRCUIT</button>
+    <div class="hint">Auto-throttle. Hit ramps to fly. Drift the 90° wall turns or eat the barrier.</div>
+  </div>
+
+  <!-- ============ COUNTDOWN ============ -->
+  <div id="countdown" class="countdown hidden"></div>
+
+  <!-- ============ PAUSE ============ -->
+  <div id="paused" class="overlay hidden">
+    <h2>PAUSED</h2>
+    <button id="resumeBtn" class="cta">RESUME</button>
+    <button id="restartBtn2" class="cta ghost">RESTART RUN</button>
+  </div>
+
+  <!-- ============ GAME OVER ============ -->
+  <div id="gameover" class="overlay hidden">
+    <div class="go-kicker">RUN TERMINATED</div>
+    <h2>SIGNAL LOST</h2>
+    <div class="results">
+      <div><span>SCORE</span><b id="finalScore">0</b></div>
+      <div><span>DISTANCE</span><b id="finalDist">0</b></div>
+      <div><span>BEST</span><b id="bestScore">0</b></div>
+      <div><span>DRIFT</span><b id="finalDrift">0</b></div>
+    </div>
+    <button id="retryBtn" class="cta">RUN IT AGAIN</button>
+  </div>
+
+  <div id="loading" class="loading">INITIALIZING OASIS…</div>
+</div>
+<script type="module" src="/src/main.js"></script>
+</body>
+</html>
