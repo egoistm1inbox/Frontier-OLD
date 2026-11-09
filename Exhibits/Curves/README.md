@@ -5,10 +5,10 @@ linear, cubic Hermite, and monotonic PCHIP interpolation; transactional key vali
 baking; and a `SpaceCodec` schema for `.curvespace` files.
 
 `Frontier/Engine/Interface/Controls/CurvePlot.{h,cpp}` is the first shared UI control for this foundation. It displays the
-live evaluated profile, provides an interpolation selector, and supports both dragging knots and keyboard editing through
-Left/Right/Up/Down; Home/End selects the endpoint knots. Endpoint input coordinates remain fixed, interior inputs remain ordered,
-and edits that fail the selected interpolation's validation are rejected without mutating the specification. It is not yet
-connected to a domain inspector and does not add or remove knots.
+live evaluated profile, provides an interpolation selector, and supports knot dragging plus focused keyboard editing. Left/Right
+adjust interior input, Up/Down adjust output, Home/End selects endpoints, and Insert/Delete add or remove the selected interior
+knot. Endpoint input coordinates remain fixed, interior inputs remain ordered, and edits that fail the selected interpolation's
+validation are rejected without mutating the specification. Domain-inspector integration remains open.
 
 ## Verification
 

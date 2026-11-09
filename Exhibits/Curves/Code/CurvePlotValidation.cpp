@@ -106,6 +106,24 @@ int main(int ArgumentCount, char** Arguments)
         Frame();
         Confirm(KeyboardChanged && Specification.Knots[1].Output > DraggedOutput,
                 "Focused arrow-key editing did not adjust the selected knot");
+        const CurveSpecification BeforeKnotCommands = Specification;
+        IO.AddKeyEvent(ImGuiKey_Insert, true);
+        Frame();
+        const bool Inserted = Changed;
+        IO.AddKeyEvent(ImGuiKey_Insert, false);
+        Frame();
+        Confirm(Inserted && Specification.Knots.size() == 4, "Insert did not add a knot to the selected interval");
+        IO.AddKeyEvent(ImGuiKey_Delete, true);
+        Frame();
+        const bool Removed = Changed;
+        IO.AddKeyEvent(ImGuiKey_Delete, false);
+        Frame();
+        Confirm(Removed && Specification.Knots.size() == 3, "Delete did not remove the selected interior knot");
+        bool KnotRoundTrip = Specification.Knots.size() == BeforeKnotCommands.Knots.size();
+        for (size_t Index = 0; Index < Specification.Knots.size() && KnotRoundTrip; ++Index)
+            KnotRoundTrip = std::abs(Specification.Knots[Index].Input - BeforeKnotCommands.Knots[Index].Input) < 1.0e-12 &&
+                            std::abs(Specification.Knots[Index].Output - BeforeKnotCommands.Knots[Index].Output) < 1.0e-12;
+        Confirm(KnotRoundTrip, "Insert/Delete changed the surrounding curve knots");
 
         const double PriorOutput = Specification.Knots[1].Output;
         Specification.Interpolation = CurveInterpolation::MonotonicPchip;

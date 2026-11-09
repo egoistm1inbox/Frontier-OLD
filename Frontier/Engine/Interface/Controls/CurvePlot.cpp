@@ -5,6 +5,7 @@
 
 #include "Frontier/Engine/Interface/Controls/CurvePlot.h"
 
+#include "Frontier/Engine/Interface/Controls/ActionRow.h"
 #include "Frontier/Engine/Interface/Controls/CaptionText.h"
 #include "Frontier/Engine/Interface/Controls/ControlColumn.h"
 #include "Frontier/Engine/Interface/Controls/DiagramCanvas.h"
@@ -92,6 +93,35 @@ bool AcceptCandidate(CurveSpecification& Specification, CurveProfile<double>& Pr
     if (!CandidateProfile.Assign(Candidate, &Diagnostic)) return false;
     Specification = std::move(Candidate);
     Profile = std::move(CandidateProfile);
+    return true;
+}
+
+bool InsertSelectedKnot(CurveSpecification& Specification, CurveProfile<double>& Profile, int& SelectedKnot,
+                        std::string& Diagnostic)
+{
+    if (Specification.Knots.size() >= CurveProfile<double>::MaximumKnotCount) return false;
+    const size_t Left = SelectedKnot + 1 < static_cast<int>(Specification.Knots.size())
+                            ? static_cast<size_t>(SelectedKnot)
+                            : Specification.Knots.size() - 2;
+    const double Input = (Specification.Knots[Left].Input + Specification.Knots[Left + 1].Input) * 0.5;
+    CurveSpecification Candidate = Specification;
+    const size_t Inserted = Left + 1;
+    Candidate.Knots.insert(Candidate.Knots.begin() + static_cast<std::ptrdiff_t>(Inserted),
+                           { Input, Profile.Evaluate(Input) });
+    if (!AcceptCandidate(Specification, Profile, std::move(Candidate), Diagnostic)) return false;
+    SelectedKnot = static_cast<int>(Inserted);
+    return true;
+}
+
+bool RemoveSelectedKnot(CurveSpecification& Specification, CurveProfile<double>& Profile, int& SelectedKnot,
+                        std::string& Diagnostic)
+{
+    if (Specification.Knots.size() <= 2 || SelectedKnot <= 0 ||
+        static_cast<size_t>(SelectedKnot + 1) >= Specification.Knots.size()) return false;
+    CurveSpecification Candidate = Specification;
+    Candidate.Knots.erase(Candidate.Knots.begin() + SelectedKnot);
+    if (!AcceptCandidate(Specification, Profile, std::move(Candidate), Diagnostic)) return false;
+    SelectedKnot = std::min(SelectedKnot, static_cast<int>(Specification.Knots.size() - 1));
     return true;
 }
 
@@ -190,10 +220,24 @@ bool CurvePlot::Construct(ControlColumn& Column, const char* Id, CurveSpecificat
     const ImGuiID DraggingId = ImGui::GetID("CurvePlotDraggingKnot");
     int SelectedKnot = std::clamp(Storage->GetInt(SelectedId, 0), 0, static_cast<int>(Specification.Knots.size() - 1));
     int DraggingKnot = Storage->GetInt(DraggingId, -1);
+    const bool CanInsert = Specification.Knots.size() < CurveProfile<double>::MaximumKnotCount;
+    const bool CanRemove = Specification.Knots.size() > 2 && SelectedKnot > 0 &&
+                           static_cast<size_t>(SelectedKnot + 1) < Specification.Knots.size();
+    const std::array<ActionEntry, 2> Actions = {{
+        { "InsertKnot", "Add knot", CanInsert, "Insert on the adjacent interval around the selected knot." },
+        { "RemoveKnot", "Remove knot", CanRemove, "Remove the selected interior knot; endpoints define the domain." },
+    }};
+    const int Action = ActionRow::Construct(Column, Actions);
+    if (Action == 0 && CanInsert)
+        Changed |= InsertSelectedKnot(Specification, Profile, SelectedKnot, Diagnostic);
+    else if (Action == 1 && CanRemove)
+        Changed |= RemoveSelectedKnot(Specification, Profile, SelectedKnot, Diagnostic);
+    Storage->SetInt(SelectedId, SelectedKnot);
+
     DiagramDrag Drag;
     DiagramPen Pen = DiagramCanvas::Begin(Column, "CurveCanvas", PlotWidth, PlotHeight, 8.0f, 8.0f,
                                          Enabled ? &Drag : nullptr,
-                                         "Drag knots. Focus the plot: arrows edit, Home/End select endpoints.");
+                                         "Drag knots. Focus the plot: arrows edit; Insert/Delete add or remove; Home/End select endpoints.");
     const CurveRange Range = ResolveRange(Specification);
 
     if (Drag.Start)
@@ -247,6 +291,10 @@ bool CurvePlot::Construct(ControlColumn& Column, const char* Id, CurveSpecificat
     {
         if (Drag.Key == ImGuiKey_Home) SelectedKnot = 0;
         else if (Drag.Key == ImGuiKey_End) SelectedKnot = static_cast<int>(Specification.Knots.size() - 1);
+        else if (Drag.Key == ImGuiKey_Insert)
+            Changed |= InsertSelectedKnot(Specification, Profile, SelectedKnot, Diagnostic);
+        else if (Drag.Key == ImGuiKey_Delete)
+            Changed |= RemoveSelectedKnot(Specification, Profile, SelectedKnot, Diagnostic);
         else
         {
             CurveSpecification Candidate = Specification;

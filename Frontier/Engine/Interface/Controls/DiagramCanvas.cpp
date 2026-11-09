@@ -36,7 +36,7 @@ DiagramPen DiagramCanvas::Begin(ControlColumn& Column, const char* Id, float Log
         {
             Drag->Step = ImGui::GetIO().KeyShift ? 10.0f : 1.0f;
             for (ImGuiKey Key : {ImGuiKey_LeftArrow, ImGuiKey_RightArrow, ImGuiKey_UpArrow,
-                                ImGuiKey_DownArrow, ImGuiKey_Home, ImGuiKey_End})
+                                ImGuiKey_DownArrow, ImGuiKey_Home, ImGuiKey_End, ImGuiKey_Insert, ImGuiKey_Delete})
             {
                 if (ImGui::IsKeyPressed(Key)) Drag->Key = Key;
             }

@@ -53,8 +53,8 @@ Single progress and violation tracker. Detailed evidence belongs in Exhibits, no
 - Added the declarative `VisualEffectProfile`/`EffectSpace` `.effectspace` schema with spatial and replication profiles;
   `EffectSpaceValidation` passes 19 checks. This is not a GPU render sequence.
 - Started the shared UI-first slice with `Frontier/Engine/Interface/Controls/CurvePlot.{h,cpp}`. It previews live evaluations,
-  selects interpolation, and transactionally edits knots by pointer or focused keyboard input. Headless ImGui validation passed
-  drag, arrow-key editing, and invalid-PCHIP rejection under ASan/UBSan; CPU-raster evidence is
+  selects interpolation, and transactionally drags, inserts, removes, or keyboard-edits knots. Headless ImGui validation passed
+  pointer/keyboard edits, Insert/Delete round-trip, and invalid-PCHIP rejection; CPU-raster evidence is
   `Exhibits/Curves/Images/CurvePlot-CPU.png`. Domain-inspector integration and full editor parity remain open.
 - **Still open:** CurveSpace consumers; the EffectSpace evaluation/render-target/GPU pipeline; the remaining 3.6 naming, gizmo, and
   placement work; and a native/browser Fluid boundary. No domain curve UI or engine/editor Fluid integration is claimed.
