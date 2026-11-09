@@ -242,7 +242,8 @@ or the planned GPU `VisualEffects` sequence. The first shared `CurvePlot` UI con
 authoring remains deferred until the shared Editor foundation is complete.
 
 1. **Curve Engine & `.curvespace` Foundation (`Frontier/Engine/Foundation/Curves/`):**
-   - **Note:** Engine/data/math layer only (ImGui curve-drawing UI waits for the post-foundation Editor phase).
+   - **Note:** The shared `CurvePlot` control is being built as UI foundation before domain behavior. Curve authoring inside
+     specific inspectors waits until the post-foundation Editor phase.
    - `template <CurveValueConcept ValueT> class CurveProfile`: supports piecewise linear, clamped cubic Hermite, and
      monotonic PCHIP interpolation, finite/domain/monotonicity transactional validation, and pre-baked uniform `Lut<N>`
      tables for zero-branch GPU/solver evaluation.

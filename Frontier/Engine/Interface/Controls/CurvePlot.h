@@ -15,7 +15,7 @@ class ControlColumn;
 class CurvePlot
 {
   public:
-    // 📝 Edits the interpolation mode or drags existing knots. Invalid candidate edits leave the curve unchanged.
+    // 📝 Selects interpolation; pointer or focused keys edit knots. Invalid candidates leave the curve unchanged.
     [[nodiscard]] static bool Construct(ControlColumn& Column, const char* Id, CurveSpecification& Specification,
                                         bool Enabled = true);
 };

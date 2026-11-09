@@ -98,6 +98,14 @@ int main(int ArgumentCount, char** Arguments)
                 "Dragging a knot did not update the authored curve and its preview source");
         Confirm(Specification.Knots.front().Input == 0.0 && Specification.Knots.back().Input == 1.0,
                 "Dragging an interior knot changed the endpoint domain");
+        const double DraggedOutput = Specification.Knots[1].Output;
+        IO.AddKeyEvent(ImGuiKey_UpArrow, true);
+        Frame();
+        const bool KeyboardChanged = Changed;
+        IO.AddKeyEvent(ImGuiKey_UpArrow, false);
+        Frame();
+        Confirm(KeyboardChanged && Specification.Knots[1].Output > DraggedOutput,
+                "Focused arrow-key editing did not adjust the selected knot");
 
         const double PriorOutput = Specification.Knots[1].Output;
         Specification.Interpolation = CurveInterpolation::MonotonicPchip;
@@ -112,14 +120,15 @@ int main(int ArgumentCount, char** Arguments)
         Frame();
         IO.AddMouseButtonEvent(ImGuiMouseButton_Left, true);
         Frame();
-        IO.AddMousePosEvent(KnotAt.x, Extent.Minimum.y + 17.0f * CanvasScale);
+        const double PchipPressOutput = Specification.Knots[1].Output;
+        IO.AddMousePosEvent(KnotAt.x, Extent.Minimum.y + 16.0f * CanvasScale);
         Frame();
         IO.AddMouseButtonEvent(ImGuiMouseButton_Left, false);
         Frame();
-        Confirm(std::abs(Specification.Knots[1].Output - PriorOutput) < 1.0e-12,
+        Confirm(std::abs(Specification.Knots[1].Output - PchipPressOutput) < 1.0e-12,
                 "A non-monotone PCHIP edit was not rejected transactionally");
 
-        std::fprintf(stdout, "CurvePlotValidation: interactive knot drag and transactional PCHIP rejection passed\n");
+        std::fprintf(stdout, "CurvePlotValidation: pointer and keyboard edits; PCHIP rejection passed\n");
         ImGui::DestroyContext();
         return 0;
     }

@@ -5,20 +5,21 @@ linear, cubic Hermite, and monotonic PCHIP interpolation; transactional key vali
 baking; and a `SpaceCodec` schema for `.curvespace` files.
 
 `Frontier/Engine/Interface/Controls/CurvePlot.{h,cpp}` is the first shared UI control for this foundation. It displays the
-live evaluated profile, provides an interpolation selector, and lets users drag existing knots. Endpoint input coordinates
-remain fixed, interior inputs remain ordered, and edits that fail the selected interpolation's validation are rejected
-without mutating the specification. It is not yet connected to a domain inspector and does not add or remove knots.
+live evaluated profile, provides an interpolation selector, and supports both dragging knots and keyboard editing through
+Left/Right/Up/Down; Home/End selects the endpoint knots. Endpoint input coordinates remain fixed, interior inputs remain ordered,
+and edits that fail the selected interpolation's validation are rejected without mutating the specification. It is not yet
+connected to a domain inspector and does not add or remove knots.
 
 ## Verification
 
 The engine validation checks interpolation bounds, uneven PCHIP monotonicity, invalid-key rejection and transactionality,
 lookup-table baking, codec round trips, invalid TOML rejection, and the required `.curvespace` extension.
 
-`CurvePlotValidation` runs the real ImGui control headlessly: it drags an interior knot, verifies the authored specification
-changes, then verifies a non-monotone PCHIP edit is rejected transactionally. Its CMake/CTest target links the production
+`CurvePlotValidation` runs the real ImGui control headlessly: it drags an interior knot, edits it with an arrow key, verifies
+the authored specification changes, then verifies a non-monotone PCHIP edit is rejected transactionally. Its CMake/CTest target links the production
 `FrontierSceneEditorUI` library. On this Linux host the same focused test was directly compiled with GCC 12.2 and pinned
-ImGui sources because CMake is not installed. The exhibit-only CPU rasterizer captured the actual ImGui draw commands to
-`Images/CurvePlot-CPU.png`; this is not native GPU evidence.
+ImGui sources because CMake is not installed. The same test passed under AddressSanitizer and UndefinedBehaviorSanitizer. The exhibit-only CPU rasterizer captured the
+actual ImGui draw commands to `Images/CurvePlot-CPU.png`; this is not native GPU evidence.
 
 ## Not yet implemented
 

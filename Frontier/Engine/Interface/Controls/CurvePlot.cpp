@@ -84,6 +84,17 @@ double ResolveOutput(float Y, const CurveRange& Range) noexcept
     return Range.MinimumOutput + V * (Range.MaximumOutput - Range.MinimumOutput);
 }
 
+bool AcceptCandidate(CurveSpecification& Specification, CurveProfile<double>& Profile, CurveSpecification Candidate,
+                     std::string& Diagnostic)
+{
+    CurveProfile<double> CandidateProfile;
+    Diagnostic.clear();
+    if (!CandidateProfile.Assign(Candidate, &Diagnostic)) return false;
+    Specification = std::move(Candidate);
+    Profile = std::move(CandidateProfile);
+    return true;
+}
+
 void ConstructPlot(DiagramPen& Pen, const CurveSpecification& Specification, const CurveProfile<double>* Profile,
                    const CurveRange& Range, int ActiveKnot)
 {
@@ -164,14 +175,7 @@ bool CurvePlot::Construct(ControlColumn& Column, const char* Id, CurveSpecificat
     {
         CurveSpecification Candidate = Specification;
         Candidate.Interpolation = static_cast<CurveInterpolation>(Interpolation);
-        CurveProfile<double> CandidateProfile;
-        Diagnostic.clear();
-        if (CandidateProfile.Assign(Candidate, &Diagnostic))
-        {
-            Specification = std::move(Candidate);
-            Profile = std::move(CandidateProfile);
-            Changed = true;
-        }
+        if (AcceptCandidate(Specification, Profile, std::move(Candidate), Diagnostic)) Changed = true;
     }
 
     if (!Profile.IsValid())
@@ -181,18 +185,20 @@ bool CurvePlot::Construct(ControlColumn& Column, const char* Id, CurveSpecificat
         return Changed;
     }
 
+    ImGuiStorage* Storage = ImGui::GetStateStorage();
+    const ImGuiID SelectedId = ImGui::GetID("CurvePlotSelectedKnot");
+    const ImGuiID DraggingId = ImGui::GetID("CurvePlotDraggingKnot");
+    int SelectedKnot = std::clamp(Storage->GetInt(SelectedId, 0), 0, static_cast<int>(Specification.Knots.size() - 1));
+    int DraggingKnot = Storage->GetInt(DraggingId, -1);
     DiagramDrag Drag;
     DiagramPen Pen = DiagramCanvas::Begin(Column, "CurveCanvas", PlotWidth, PlotHeight, 8.0f, 8.0f,
                                          Enabled ? &Drag : nullptr,
-                                         "Drag a knot to edit it. End knots keep their input coordinate.");
-    ImGuiStorage* Storage = ImGui::GetStateStorage();
-    const ImGuiID ActiveId = ImGui::GetID("CurvePlotActiveKnot");
-    int ActiveKnot = Storage->GetInt(ActiveId, -1);
+                                         "Drag knots. Focus the plot: arrows edit, Home/End select endpoints.");
     const CurveRange Range = ResolveRange(Specification);
 
     if (Drag.Start)
     {
-        ActiveKnot = -1;
+        DraggingKnot = -1;
         float Nearest = 14.0f;
         for (size_t Index = 0; Index < Specification.Knots.size(); ++Index)
         {
@@ -204,48 +210,77 @@ bool CurvePlot::Construct(ControlColumn& Column, const char* Id, CurveSpecificat
             if (Distance < Nearest)
             {
                 Nearest = Distance;
-                ActiveKnot = static_cast<int>(Index);
+                DraggingKnot = static_cast<int>(Index);
             }
         }
-        Storage->SetInt(ActiveId, ActiveKnot);
+        if (DraggingKnot >= 0) SelectedKnot = DraggingKnot;
+        Storage->SetInt(SelectedId, SelectedKnot);
+        Storage->SetInt(DraggingId, DraggingKnot);
     }
 
-    if (Drag.Engaged && ActiveKnot >= 0 && static_cast<size_t>(ActiveKnot) < Specification.Knots.size())
+    if (Drag.Engaged && DraggingKnot >= 0 && static_cast<size_t>(DraggingKnot) < Specification.Knots.size())
     {
         CurveSpecification Candidate = Specification;
-        CurveKnot& Knot = Candidate.Knots[static_cast<size_t>(ActiveKnot)];
+        CurveKnot& Knot = Candidate.Knots[static_cast<size_t>(DraggingKnot)];
         const CurveKnot Original = Knot;
-        if (ActiveKnot > 0 && static_cast<size_t>(ActiveKnot + 1) < Candidate.Knots.size())
+        if (DraggingKnot > 0 && static_cast<size_t>(DraggingKnot + 1) < Candidate.Knots.size())
         {
             const double Span = Range.MaximumInput - Range.MinimumInput;
-            const double LeftGap = Knot.Input - Candidate.Knots[static_cast<size_t>(ActiveKnot - 1)].Input;
-            const double RightGap = Candidate.Knots[static_cast<size_t>(ActiveKnot + 1)].Input - Knot.Input;
+            const double LeftGap = Knot.Input - Candidate.Knots[static_cast<size_t>(DraggingKnot - 1)].Input;
+            const double RightGap = Candidate.Knots[static_cast<size_t>(DraggingKnot + 1)].Input - Knot.Input;
             const double Margin = std::min(Span * 1.0e-6, std::min(LeftGap, RightGap) * 0.25);
             Knot.Input = std::clamp(ResolveInput(Drag.Point.x, Range),
-                                    Candidate.Knots[static_cast<size_t>(ActiveKnot - 1)].Input + Margin,
-                                    Candidate.Knots[static_cast<size_t>(ActiveKnot + 1)].Input - Margin);
+                                    Candidate.Knots[static_cast<size_t>(DraggingKnot - 1)].Input + Margin,
+                                    Candidate.Knots[static_cast<size_t>(DraggingKnot + 1)].Input - Margin);
         }
         Knot.Output = ResolveOutput(Drag.Point.y, Range);
         if (Knot.Input != Original.Input || Knot.Output != Original.Output)
-        {
-            CurveProfile<double> CandidateProfile;
-            Diagnostic.clear();
-            if (CandidateProfile.Assign(Candidate, &Diagnostic))
-            {
-                Specification = std::move(Candidate);
-                Profile = std::move(CandidateProfile);
-                Changed = true;
-            }
-        }
+            Changed |= AcceptCandidate(Specification, Profile, std::move(Candidate), Diagnostic);
     }
     else if (!Drag.Engaged)
     {
-        Storage->SetInt(ActiveId, -1);
-        ActiveKnot = -1;
+        DraggingKnot = -1;
+        Storage->SetInt(DraggingId, -1);
+    }
+
+    if (Enabled && Drag.Key != ImGuiKey_None)
+    {
+        if (Drag.Key == ImGuiKey_Home) SelectedKnot = 0;
+        else if (Drag.Key == ImGuiKey_End) SelectedKnot = static_cast<int>(Specification.Knots.size() - 1);
+        else
+        {
+            CurveSpecification Candidate = Specification;
+            CurveKnot& Knot = Candidate.Knots[static_cast<size_t>(SelectedKnot)];
+            const CurveKnot Original = Knot;
+            const double InputStep = (Range.MaximumInput - Range.MinimumInput) * 0.002 * Drag.Step;
+            const double OutputStep = (Range.MaximumOutput - Range.MinimumOutput) * 0.01 * Drag.Step;
+            if (Drag.Key == ImGuiKey_LeftArrow && SelectedKnot > 0 &&
+                static_cast<size_t>(SelectedKnot + 1) < Candidate.Knots.size())
+            {
+                const double Left = Candidate.Knots[static_cast<size_t>(SelectedKnot - 1)].Input;
+                const double Right = Candidate.Knots[static_cast<size_t>(SelectedKnot + 1)].Input;
+                const double Margin = std::min(Right - Left, Range.MaximumInput - Range.MinimumInput) * 1.0e-6;
+                Knot.Input = std::max(Left + Margin, Knot.Input - InputStep);
+            }
+            else if (Drag.Key == ImGuiKey_RightArrow && SelectedKnot > 0 &&
+                     static_cast<size_t>(SelectedKnot + 1) < Candidate.Knots.size())
+            {
+                const double Left = Candidate.Knots[static_cast<size_t>(SelectedKnot - 1)].Input;
+                const double Right = Candidate.Knots[static_cast<size_t>(SelectedKnot + 1)].Input;
+                const double Margin = std::min(Right - Left, Range.MaximumInput - Range.MinimumInput) * 1.0e-6;
+                Knot.Input = std::min(Right - Margin, Knot.Input + InputStep);
+            }
+            else if (Drag.Key == ImGuiKey_UpArrow) Knot.Output += OutputStep;
+            else if (Drag.Key == ImGuiKey_DownArrow) Knot.Output -= OutputStep;
+            if (Knot.Input != Original.Input || Knot.Output != Original.Output)
+                Changed |= AcceptCandidate(Specification, Profile, std::move(Candidate), Diagnostic);
+        }
+        Storage->SetInt(SelectedId, SelectedKnot);
     }
 
     const CurveRange DrawRange = ResolveRange(Specification);
-    ConstructPlot(Pen, Specification, Valid || Changed ? &Profile : nullptr, DrawRange, ActiveKnot);
+    const int HighlightKnot = DraggingKnot >= 0 ? DraggingKnot : SelectedKnot;
+    ConstructPlot(Pen, Specification, Valid || Changed ? &Profile : nullptr, DrawRange, HighlightKnot);
     if (!Diagnostic.empty()) CaptionText::Construct(Column, Diagnostic.c_str(), 4.0f, 8.0f);
     ImGui::PopID();
     return Changed;
