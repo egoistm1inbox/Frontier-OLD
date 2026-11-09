@@ -21,6 +21,9 @@ import {
 } from './Engine/TerrainLayerStack.js';
 import { WorldMap2DCanvas } from './Engine/WorldMap2DCanvas.js';
 import { TerrainOceanViewport } from './Engine/TerrainOceanViewport.js';
+import { TERRAIN_PRESETS, ApplyTerrainPreset } from './Engine/TerrainPresets.js';
+import { EROSION_LAYER_TYPES, StepWorldWeatherSimulation } from './Engine/TerrainErosionPhysics.js';
+import { TERRAIN_DATA_MAPS, TERRAIN_EXPORT_MAPS, SATMAP_PALETTES, BuildTerrainDataMaps, ExportTerrainMapPng, MICRO_FABRIC_STAMPS } from './Engine/TerrainGaeaTexturing.js';
 import {
     ConstructGlyph,
     MakeEl,
@@ -380,7 +383,15 @@ class TerrainWorldStudioApp
                 badge: 'STRATA',
                 featured: false,
                 action: () => this.addProceduralLayer('terrace')
-            }
+            },
+            ...[
+                ['erosion-hydraulic','+ Hydraulic / River Erosion','Infiltration, flow routing, sediment transport','WATER'],
+                ['erosion-wind','+ Wind / Dune Erosion','Saltation, dune slipfaces & canyon abrasion','WIND'],
+                ['erosion-pitting','+ Frost / Thermal Pitting','Freeze-thaw and solar thermal fatigue','PITTING'],
+                ['erosion-rockfall','+ Rockfall / Talus','Native cliff failures and downslope deposition','TALUS'],
+                ['erosion-chemical','+ Chemical Weathering','Karst, silicate alteration and staining','CHEM'],
+                ['erosion-glacial','+ Seasonal Snow / Ice','Snowpack, meltwater and shallow glacier abrasion','GLACIAL']
+            ].map(([type,title,desc,badge])=>({title,desc,glyph:'Mountain',badge,featured:false,action:()=>this.addProceduralLayer(type)}))
         ];
 
         for (const Item of QuickItems)
@@ -411,7 +422,8 @@ class TerrainWorldStudioApp
             ['Solo: Basalt Cliffs (No Falloff · Sheer Cliff)', () => this._focusSingleRegion(1)],
             ['Solo: Caldera Atoll (Rim Ring Falloff)', () => this._focusSingleRegion(2)],
             ['Inspect Thin SDF Slab (Ocean OFF)', () => { this.world.oceanVisible = false; this._syncOceanUI(); }],
-            ['Export .STL Binary', () => this._exportStl()]
+            ['Export .STL Binary', () => this._exportStl()],
+            ...TERRAIN_PRESETS.map(P => [`Preset · ${P.name}`, () => this._applyTerrainPreset(P.name)])
         ];
 
         for (let I = 0; I < Chips.length; ++I)
@@ -427,6 +439,53 @@ class TerrainWorldStudioApp
             });
             Strip.appendChild(Chip);
         }
+    }
+
+    _stepWeatherLayer(Region, Layer)
+    {
+        const GroupId = Layer.weatherGroupId || Region.weatherGroupId || null;
+        const Targets = GroupId ? this.world.regions : [Region];
+        for (const Target of Targets) if (Target.dirty || !Target.runtime) EvaluateTerrainRegion(this.world, Target);
+        this.pushUndoSnapshot();
+        const Baselines = new Map(Targets.map(Target => [Target.id, Target.runtime.heights.slice()]));
+        const Results = StepWorldWeatherSimulation(Targets, {
+            kind: Layer.type, weatherGroupId: GroupId, sharedPattern: !!GroupId,
+            seed: Layer.seed, strength: Layer.strength, rainfall: Layer.rainfall,
+            season: Layer.season, temperatureC: Layer.temperatureC,
+            azimuth: Layer.azimuth, acidity: Layer.acidity, dt: 1
+        });
+        for (const Result of Results)
+        {
+            const Target = this.world.regions.find(R => R.id === Result.regionId);
+            if (!Target) continue;
+            const Baseline = Baselines.get(Target.id), Runtime = Target.runtime;
+            const Deltas = new Float32Array(Runtime.heights.length);
+            for (let I = 0; I < Deltas.length; ++I) Deltas[I] = Runtime.heights[I] - Baseline[I];
+            const Commit = CreateTerrainLayer('sculpt', { name: `Weather Step · ${Layer.type.replace('erosion-','')}`, falloff: { mode: 'none', distance: 0, edgeFloor: 1 }, deltas, deltaRes: Runtime.nx });
+            Commit.nx = Runtime.nx; Commit.nz = Runtime.nz;
+            Target.stack.push(Commit);
+            // Keep the freshly stepped runtime (wetness, snow and transport diagnostics) for the live preview;
+            // the zero-falloff sculpt delta makes the height change reproducible after a later full re-evaluation.
+            Target.dirty = false;
+            Target.meshDirty = true;
+            this.map2D.invalidateRegionPreview(Target.id);
+        }
+        this.map2D.requestRedraw();
+        this.refreshChrome();
+    }
+
+    _applyTerrainPreset(Name)
+    {
+        const Region = this.getActiveRegion();
+        if (!Region) return;
+        this.pushUndoSnapshot();
+        ApplyTerrainPreset(Region, Name);
+        this.activeLayerId = Region.stack.at(-1)?.id || null;
+        EvaluateTerrainRegion(this.world, Region, this.activeLayerId);
+        Region.meshDirty = true;
+        this.map2D.invalidateRegionPreview(Region.id);
+        this.refreshChrome();
+        this.rebuildInspector();
     }
 
     _focusSingleRegion(Index)
@@ -1450,7 +1509,7 @@ class TerrainWorldStudioApp
         const GenGroup = MakePropertyGroup(ActiveLayer.name, 'Mountain', ActiveLayer.type.toUpperCase(), true);
         GenGroup.Body.appendChild(MakeSliderPillRow('Layer Blend Opacity', 0.0, 1.0, 0.01, ActiveLayer.opacity ?? 1.0, 2, 'w', V => { ActiveLayer.opacity = V; TriggerLive(); }, TriggerCommit));
 
-        if (!['terrace', 'spline', 'sculpt'].includes(ActiveLayer.type))
+        if (!['terrace', 'spline', 'sculpt', ...EROSION_LAYER_TYPES].includes(ActiveLayer.type))
         {
             GenGroup.Body.appendChild(MakeSelectRow('Combine Mode', COMBINE_MODES, ActiveLayer.combine || 'add', Val =>
             {
@@ -1500,6 +1559,30 @@ class TerrainWorldStudioApp
             GenGroup.Body.appendChild(MakeSliderPillRow('Bench Flatness', 0.1, 0.98, 0.01, ActiveLayer.strength, 2, 'w', V => { ActiveLayer.strength = V; TriggerLive(); }, TriggerCommit));
             GenGroup.Body.appendChild(MakeSliderPillRow('Bedding Dip Angle', 0, 25, 0.5, ActiveLayer.dipDeg, 1, '°', V => { ActiveLayer.dipDeg = V; TriggerLive(); }, TriggerCommit));
         }
+        else if (EROSION_LAYER_TYPES.includes(ActiveLayer.type))
+        {
+            GenGroup.Body.appendChild(MakeSliderPillRow('Process Strength', 0, 1, 0.01, ActiveLayer.strength ?? 0.55, 2, '×', V => { ActiveLayer.strength = V; TriggerLive(); }, TriggerCommit));
+            GenGroup.Body.appendChild(MakeSliderPillRow('Deterministic Passes', 1, 8, 1, ActiveLayer.iterations ?? 3, 0, 'steps', V => { ActiveLayer.iterations = V; TriggerLive(); }, TriggerCommit));
+            if (ActiveLayer.type === 'erosion-hydraulic' || ActiveLayer.type === 'erosion-glacial')
+            {
+                GenGroup.Body.appendChild(MakeSelectRow('Seasonal Cycle', [['Winter','0'],['Spring melt','1'],['Summer','2'],['Autumn','3']], String(ActiveLayer.season ?? 0), Val => { ActiveLayer.season = Number(Val); TriggerLive(); TriggerCommit(); }));
+                GenGroup.Body.appendChild(MakeSliderPillRow('Rain / Melt Input', 0, 1, 0.01, ActiveLayer.rainfall ?? 0.38, 2, '×', V => { ActiveLayer.rainfall = V; TriggerLive(); }, TriggerCommit));
+            }
+            if (ActiveLayer.type === 'erosion-pitting' || ActiveLayer.type === 'erosion-glacial')
+                GenGroup.Body.appendChild(MakeSliderPillRow('Climate Temperature', -18, 24, 0.5, ActiveLayer.temperatureC ?? -4, 1, '°C', V => { ActiveLayer.temperatureC = V; TriggerLive(); }, TriggerCommit));
+            if (ActiveLayer.type === 'erosion-wind')
+                GenGroup.Body.appendChild(MakeSliderPillRow('Wind Azimuth', 0, 360, 1, ActiveLayer.azimuth ?? 35, 0, '°', V => { ActiveLayer.azimuth = V; TriggerLive(); }, TriggerCommit));
+            if (ActiveLayer.type === 'erosion-chemical')
+                GenGroup.Body.appendChild(MakeSliderPillRow('Chemical Reactivity', 0, 1, 0.01, ActiveLayer.acidity ?? 0.45, 2, '×', V => { ActiveLayer.acidity = V; TriggerLive(); }, TriggerCommit));
+            const GroupOptions = [['Independent weather', ''], ['Shared Weather A', 'weather-a'], ['Shared Weather B', 'weather-b']];
+            GenGroup.Body.appendChild(MakeSelectRow('Weather Pattern Group', GroupOptions, ActiveLayer.weatherGroupId || Region.weatherGroupId || '', Val => { ActiveLayer.weatherGroupId = Val || null; Region.weatherGroupId = Val || null; TriggerLive(); TriggerCommit(); }));
+            const StepBtn = MakeEl('button', 'button export-button', (ActiveLayer.weatherGroupId || Region.weatherGroupId) ? 'Step shared weather group' : 'Run one live weather step');
+            StepBtn.type = 'button';
+            StepBtn.addEventListener('click', () => this._stepWeatherLayer(Region, ActiveLayer));
+            GenGroup.Body.appendChild(StepBtn);
+            const StepNote = MakeEl('small', 'row-meta', 'Live step updates the current terrain preview. Stack baking remains deterministic and non-destructive.');
+            GenGroup.Body.appendChild(StepNote);
+        }
         else if (ActiveLayer.type === 'spline')
         {
             const JumpBtn = MakeEl('button', 'button export-button', 'Open 3D Spline & Gizmo Controls ↗');
@@ -1533,6 +1616,41 @@ class TerrainWorldStudioApp
         }
 
         Content.appendChild(GenGroup.Group);
+
+        const TextureGroup = MakePropertyGroup('Gaea Data Maps & Surface Stamps', 'Layers', 'MAPS', true,
+            'Generate exportable geomorphic masks and curate triplanar fabric stamps. The selected palette and stamps are saved with the terrain region.');
+        TextureGroup.Body.appendChild(MakeSelectRow('SatMap Geological Palette', SATMAP_PALETTES.map(P => [P.name, P.name]), Region.texturingPalette || SATMAP_PALETTES[0].name, Val => { this.pushUndoSnapshot(); Region.texturingPalette = Val; Region.meshDirty = true; this.map2D.invalidateRegionPreview(Region.id); this.refreshChrome(); }));
+        const StampGrid = MakeEl('div', 'studio-btn-row');
+        for (const Stamp of MICRO_FABRIC_STAMPS)
+        {
+            const StampBtn = MakeEl('button', 'button' + ((Region.texturingStamps || []).includes(Stamp) ? ' export-button' : ''), `${(Region.texturingStamps || []).includes(Stamp) ? '✓ ' : '+ '}${Stamp}`);
+            StampBtn.type = 'button';
+            StampBtn.addEventListener('click', () => { this.pushUndoSnapshot(); const Current = new Set(Region.texturingStamps || []); Current.has(Stamp) ? Current.delete(Stamp) : Current.add(Stamp); Region.texturingStamps = [...Current]; this.rebuildInspector(); });
+            StampGrid.appendChild(StampBtn);
+        }
+        TextureGroup.Body.appendChild(StampGrid);
+        TextureGroup.Body.appendChild(MakeSelectRow('Export Texture / Data Map', TERRAIN_EXPORT_MAPS.map(M => [M, M]), 'Slope', async Val =>
+        {
+            if (!Region.runtime || Region.dirty) EvaluateTerrainRegion(this.world, Region);
+            const Blob = await ExportTerrainMapPng(Region.runtime, Val, { paletteName: Region.texturingPalette });
+            if (!Blob) return;
+            const Link = document.createElement('a'); Link.href = URL.createObjectURL(Blob); Link.download = `${Region.name.replace(/[^a-z0-9]+/gi,'-')}-${Val.toLowerCase().replace(/[^a-z0-9]+/g,'-')}.png`; Link.click(); setTimeout(() => URL.revokeObjectURL(Link.href), 1000);
+        }));
+        const ExportMaps = MakeEl('button', 'button export-button', 'Download all Data / Texture Maps as PNGs');
+        ExportMaps.type = 'button';
+        ExportMaps.addEventListener('click', async () =>
+        {
+            if (!Region.runtime || Region.dirty) EvaluateTerrainRegion(this.world, Region);
+            const Maps = BuildTerrainDataMaps(Region.runtime);
+            for (const MapName of TERRAIN_EXPORT_MAPS)
+            {
+                const Blob = await ExportTerrainMapPng(Region.runtime, MapName, { maps: Maps, paletteName: Region.texturingPalette });
+                if (!Blob) continue;
+                const Link = document.createElement('a'); Link.href = URL.createObjectURL(Blob); Link.download = `${Region.name.replace(/[^a-z0-9]+/gi,'-')}-${MapName.toLowerCase().replace(/[^a-z0-9]+/g,'-')}.png`; Link.click(); setTimeout(() => URL.revokeObjectURL(Link.href), 1500);
+            }
+        });
+        TextureGroup.Body.appendChild(ExportMaps);
+        Content.appendChild(TextureGroup.Group);
     }
 
     /*--------------------------------------------------------------------------------------------------------------------------------------

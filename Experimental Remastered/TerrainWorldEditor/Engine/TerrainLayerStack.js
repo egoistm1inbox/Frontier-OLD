@@ -5,6 +5,8 @@
 // Real-Time SDF Sculpting (2.5D + True 3D Overhang/Cave SDF), Thin-Slab Triangle Mesher, and 3 Demo Open-World Masks.
 
 import { ComputeRegionMaskSdf2D, MakeTerrainUid } from './WorldMask2D.js';
+import { EROSION_LAYER_TYPES, StepTerrainErosion } from './TerrainErosionPhysics.js';
+import { SATMAP_PALETTES, SampleSatMap, BuildTerrainDataMaps } from './TerrainGaeaTexturing.js';
 
 export const Clamp = (V, Lo, Hi) => (V < Lo ? Lo : V > Hi ? Hi : V);
 export const Mix = (A, B, T) => A + (B - A) * T;
@@ -285,7 +287,13 @@ export const LAYER_TYPE_META = {
     billow:       { label: 'Billow Hills & Dunes', badge: 'FOLDED', glyph: 'Wind', accent: '#a3d977' },
     terrace:      { label: 'Terrace & Strata', badge: 'STRATA', glyph: 'Layers', accent: '#d6a2e8' },
     spline:       { label: 'Spline Landform', badge: 'SPLINE', glyph: 'Spline', accent: '#3ec46d' },
-    sculpt:       { label: 'SDF Sculpt Layer', badge: 'SCULPT', glyph: 'Brush', accent: '#ff7b7b' }
+    sculpt:       { label: 'SDF Sculpt Layer', badge: 'SCULPT', glyph: 'Brush', accent: '#ff7b7b' },
+    'erosion-hydraulic': { label: 'Hydraulic / Fluvial Erosion', badge: 'WATER', glyph: 'Waves', accent: '#5ac8fa' },
+    'erosion-wind': { label: 'Aeolian Wind & Dunes', badge: 'WIND', glyph: 'Wind', accent: '#e8c27a' },
+    'erosion-pitting': { label: 'Frost & Thermal Pitting', badge: 'PITTING', glyph: 'Snowflake', accent: '#a3d977' },
+    'erosion-rockfall': { label: 'Cliff Failure & Talus', badge: 'TALUS', glyph: 'Mountain', accent: '#f0935b' },
+    'erosion-chemical': { label: 'Chemical Weathering', badge: 'CHEM', glyph: 'Droplets', accent: '#d6a2e8' },
+    'erosion-glacial': { label: 'Seasonal Snow & Glacier', badge: 'GLACIAL', glyph: 'Snowflake', accent: '#7bc8df' }
 };
 
 export function CreateTerrainLayer(Type = 'multifractal', Overrides = {})
@@ -382,6 +390,20 @@ export function CreateTerrainLayer(Type = 'multifractal', Overrides = {})
             bankSmooth: Overrides.bankSmooth ?? 0.62,
             meander: Overrides.meander ?? 0.14,
             points: (Overrides.points || []).map(P => P.slice())
+        };
+    }
+    if (EROSION_LAYER_TYPES.includes(Type))
+    {
+        return {
+            ...Base,
+            strength: Overrides.strength ?? 0.55,
+            iterations: Overrides.iterations ?? 3,
+            rainfall: Overrides.rainfall ?? 0.38,
+            season: Overrides.season ?? 0,
+            temperatureC: Overrides.temperatureC ?? -4,
+            azimuth: Overrides.azimuth ?? 35,
+            acidity: Overrides.acidity ?? 0.45,
+            weatherGroupId: Overrides.weatherGroupId ?? null
         };
     }
     // 'sculpt'
@@ -545,6 +567,8 @@ export function EvaluateTerrainRegion(World, Region, PreviewLayerIdForFalloff = 
     }
 
     // 3. Evaluate Composable Layer Stack bottom-to-top!
+    const ErosionState = { nx: Nx, nz: Nz, stepX: StepX, stepZ: StepZ, heights: Heights, sdf2D: Sdf2D, slabBottom: SlabBottom, baseTop: BaseTop };
+    for (const Field of ['sediment','fineSediment','wetness','flow','wear','deposits','talus','chemistry','snow','ice','waterDepth']) ErosionState[Field] = new Float32Array(Count);
     const RefSpan = Math.max(400.0, Math.min(B.width, B.depth));
     for (let LIdx = 0; LIdx < Region.stack.length; ++LIdx)
     {
@@ -602,6 +626,46 @@ export function EvaluateTerrainRegion(World, Region, PreviewLayerIdForFalloff = 
         const StrikeRad = ((Number(Layer.strikeDeg) || 0.0) * Math.PI) / 180.0;
         const TanDip = Math.tan(DipRad);
         const DipDirX = -Math.sin(StrikeRad), DipDirZ = Math.cos(StrikeRad);
+
+        // Bake erosion as deterministic, composable stack operators. The original surface is blended by
+        // the exact per-layer boundary falloff, preserving sharp cliffs where falloff is disabled.
+        if (EROSION_LAYER_TYPES.includes(Type))
+        {
+            const Weights = new Float32Array(Count);
+            for (let Z = 0; Z < Nz; ++Z)
+            {
+                const Wz = B.z + Z * StepZ, BoxDz = Math.min(Wz - B.z, B.z + B.depth - Wz);
+                for (let X = 0; X < Nx; ++X)
+                {
+                    const I = Z * Nx + X;
+                    if (Sdf2D[I] > 0) continue;
+                    const Wx = B.x + X * StepX;
+                    Weights[I] = EvaluateBoundaryFalloff(Math.max(0, -Sdf2D[I]), Math.min(BoxDz, Wx-B.x, B.x+B.width-Wx), Layer.falloff) * Opacity;
+                    if (RecordFalloff) FalloffPreview[I] = Weights[I];
+                }
+            }
+            const Passes = Clamp(Layer.iterations | 0, 1, 8);
+            for (let Pass = 0; Pass < Passes; ++Pass)
+            {
+                const PassStart = Heights.slice();
+                const PassFields = Object.fromEntries(Object.entries(ErosionState).filter(([,V]) => V instanceof Float32Array && V !== Heights && V !== Sdf2D).map(([K,V]) => [K, V.slice()]));
+                const Result = StepTerrainErosion(ErosionState, {
+                    kind: Type, strength: Clamp(Number(Layer.strength) || 0.55, 0, 1),
+                    rainfall: Layer.rainfall, season: Layer.season, temperatureC: Layer.temperatureC,
+                    azimuth: Layer.azimuth, acidity: Layer.acidity, seed: Seed + Pass * 7919,
+                    seaLevel: SeaLevel, dt: 1
+                });
+                for (let I = 0; I < Count; ++I) Heights[I] = PassStart[I] + (Heights[I] - PassStart[I]) * Weights[I];
+                for (const [Field, Start] of Object.entries(PassFields))
+                {
+                    const Values = ErosionState[Field];
+                    if (!(Values instanceof Float32Array) || Values.length !== Count) continue;
+                    for (let I = 0; I < Count; ++I) Values[I] = Start[I] + (Values[I] - Start[I]) * Weights[I];
+                }
+                ErosionState.lastDiagnostics = Result;
+            }
+            continue;
+        }
 
         for (let Z = 0; Z < Nz; ++Z)
         {
@@ -800,12 +864,14 @@ export function EvaluateTerrainRegion(World, Region, PreviewLayerIdForFalloff = 
     const LandAreaKm2 = (LandCells * CellAreaM2) / 1e6;
 
     Region.runtime = {
+        ...ErosionState,
         nx: Nx, nz: Nz, stepX: StepX, stepZ: StepZ,
         slabBottom: SlabBottom, baseTop: BaseTop,
         coverage: MaskCov, sdf2D: Sdf2D, heights: Heights,
         falloffMap: FalloffPreview, waterChannel: WaterChannel,
         hasLand: true, maxHeight: MaxHeight, landAreaKm2: LandAreaKm2
     };
+    Region.runtime.dataMaps = BuildTerrainDataMaps(Region.runtime);
     Region.dirty = false;
     return Region.runtime;
 }
@@ -1039,7 +1105,19 @@ export function ExtractRegionTriangleMesh(World, Region, Options = {})
             const NxVal = -DhDx * InvLen, NyVal = InvLen, NzVal = -DhDz * InvLen;
             const SlopeDeg = Math.acos(Clamp(NyVal, -1.0, 1.0)) * 57.2957795;
 
-            const Litho = ComputeFlatLithologyColor(H, SeaLevel, SlopeDeg, Rt.waterChannel[Cell], D2, SlabBottom);
+            let Litho = ComputeFlatLithologyColor(H, SeaLevel, SlopeDeg, Rt.waterChannel[Cell], D2, SlabBottom);
+            const Palette = SATMAP_PALETTES.find(P => P.name === Region.texturingPalette);
+            if (Palette && Rt.waterChannel[Cell] <= 0.12 && H > SeaLevel + 4.5)
+            {
+                const Sat = SampleSatMap(Palette, Clamp((H - SeaLevel) / Math.max(1, Region.maxRelief || 240), 0, 1));
+                const PaletteLinear = Sat.map(C => Math.pow(C / 255, 2.2));
+                const PaletteWeight = Clamp(0.76 - SlopeDeg / 250, 0.34, 0.76);
+                Litho = Litho.map((C, K) => Mix(C, PaletteLinear[K], PaletteWeight));
+            }
+            const Wet = Clamp((Rt.wetness?.[Cell] || 0) * 0.62 + (Rt.flow?.[Cell] || 0) * 0.22, 0, 0.72);
+            if (Wet > 0) Litho = Litho.map(C => Mix(C, C * 0.48, Wet));
+            const SnowCover = Clamp((Rt.snow?.[Cell] || 0) * 0.72 + (Rt.ice?.[Cell] || 0) * 0.5, 0, 0.88);
+            if (SnowCover > 0) Litho = Litho.map(C => Mix(C, 0.72 + C * 0.28, SnowCover));
 
             const VId = PosList.length / 3;
             TopVertIdx[Cell] = VId;

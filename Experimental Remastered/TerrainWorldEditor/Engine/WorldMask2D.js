@@ -466,6 +466,9 @@ export class WorldMask2D
             slabThickness: Spec.slabThickness ?? 6.5,
             shorelineBevel: Spec.shorelineBevel ?? 18.0,
             maxRelief: Spec.maxRelief ?? 280.0,
+            weatherGroupId: Spec.weatherGroupId ?? null,
+            texturingPalette: Spec.texturingPalette ?? 'Alpine Granite',
+            texturingStamps: Spec.texturingStamps || [],
             stack: Spec.stack || [],
             sdf3DOps: Spec.sdf3DOps || [],
             dirty: true,
@@ -530,6 +533,9 @@ export class WorldMask2D
                 slabThickness: R.slabThickness,
                 shorelineBevel: R.shorelineBevel,
                 maxRelief: R.maxRelief,
+                weatherGroupId: R.weatherGroupId ?? null,
+                texturingPalette: R.texturingPalette ?? 'Alpine Granite',
+                texturingStamps: [...(R.texturingStamps || [])],
                 sdf3DOps: R.sdf3DOps.map(Op => ({ ...Op })),
                 stack: R.stack.map(Lyr =>
                 {

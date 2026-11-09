@@ -15,6 +15,9 @@ import {
     ExportWorldTerrainsBinaryStl,
     SeedThreeDemoTerrains
 } from './Engine/TerrainLayerStack.js';
+import { StepTerrainErosion, StepWorldWeatherSimulation, EROSION_LAYER_TYPES } from './Engine/TerrainErosionPhysics.js';
+import { TERRAIN_PRESETS, ApplyTerrainPreset } from './Engine/TerrainPresets.js';
+import { BuildTerrainDataMaps, TERRAIN_DATA_MAPS, SATMAP_PALETTES, MICRO_FABRIC_STAMPS } from './Engine/TerrainGaeaTexturing.js';
 
 let Passed = 0;
 function Suite(Name, Fn)
@@ -232,4 +235,43 @@ Suite('7. Moving 3D Spline Knots UP and DOWN on Y-axis shapes terrain elevation 
     assert.ok(MeshWithArch.triangleCount > TrisBeforeArch + 200, '3D Rock Arch Bridge spline mode must generate true 3D overhang tube triangles');
 });
 
-console.log(`\nAll ${Passed}/7 Open-World SDF Terrain Studio validation suites passed!`);
+// 8. Fast deterministic erosion processes, bounded to the land mask
+Suite('8. Hydraulic, wind, frost-thermal, rockfall, chemical and glacial layers run deterministically on masked terrain', () =>
+{
+    const MakeState = () => {
+        const nx=24,nz=24,n=nx*nz,heights=new Float32Array(n),sdf2D=new Float32Array(n); sdf2D.fill(-80);
+        for(let z=0;z<nz;z++)for(let x=0;x<nx;x++) heights[z*nx+x]=x<11?120-(x*3):(x===11?180:84-(x-12)*0.3)+Math.sin(z*.5)*2;
+        return {nx,nz,stepX:20,stepZ:20,heights,sdf2D,slabBottom:-6.5,baseTop:3};
+    };
+    for(const kind of EROSION_LAYER_TYPES){
+        const state=MakeState(), before=state.heights.slice();
+        const result=StepTerrainErosion(state,{kind,strength:.8,rainfall:.7,temperatureC:-7,diurnalRangeC:30,solarExposure:.9,seed:13,seaLevel:0,season:1,dt:2});
+        assert.ok([...state.heights].every(Number.isFinite),`${kind} should not produce NaN or infinity`);
+        assert.ok([...state.heights].some((v,i)=>v!==before[i]),`${kind} should visibly modify the surface`);
+        assert.ok(result.fields.wetness instanceof Float32Array && result.fields.sediment instanceof Float32Array);
+        for(let i=0;i<state.heights.length;i++)assert.ok(state.heights[i]>=-6.5,`${kind} must preserve the thin slab floor`);
+    }
+});
+
+// 9. Shared weather simulation, preset preservation, data maps and texture catalogs
+Suite('9. Shared weather groups, 16 geological presets, 14 Gaea data maps and six procedural stamps are available', () =>
+{
+    const World=new WorldMask2D(); SeedThreeDemoTerrains(World);
+    const [A,B]=World.regions; A.weatherGroupId=B.weatherGroupId='shared-test';
+    const Twin={...A,id:'weather-twin',weatherGroupId:'shared-test',runtime:Object.fromEntries(Object.entries(A.runtime).map(([K,V])=>[K,ArrayBuffer.isView(V)?new V.constructor(V):V]))};
+    const shared=StepWorldWeatherSimulation([A,Twin,B],{kind:'erosion-hydraulic',weatherGroupId:'shared-test',sharedPattern:true,seed:4029,rainfall:.65,strength:.4});
+    assert.equal(shared.length,3,'A shared group should step every linked terrain');
+    assert.deepEqual(shared[0].fields.wetness,shared[1].fields.wetness,'identical starting terrains under shared patterns should evolve identically');
+    assert.equal(TERRAIN_PRESETS.length,16);
+    const originalMask=A.maskLayerId, originalBounds={...A.bounds};
+    for(const preset of TERRAIN_PRESETS){ApplyTerrainPreset(A,preset);assert.equal(A.maskLayerId,originalMask);assert.deepEqual(A.bounds,originalBounds);assert.ok(A.stack.length>0);}
+    EvaluateTerrainRegion(World,A);
+    const maps=BuildTerrainDataMaps(A.runtime);
+    assert.equal(Object.keys(maps).length,14); assert.equal(TERRAIN_DATA_MAPS.length,14);
+    for(const name of TERRAIN_DATA_MAPS)assert.equal(maps[name].length,A.runtime.heights.length);
+    assert.equal(SATMAP_PALETTES.length,20);assert.equal(MICRO_FABRIC_STAMPS.length,6);
+    const Saved=World.toJSON();const Restored=new WorldMask2D();Restored.loadFromJSON(Saved);
+    assert.equal(Restored.regions[0].texturingPalette,A.texturingPalette);
+});
+
+console.log(`\nAll ${Passed}/9 Open-World SDF Terrain Studio validation suites passed!`);

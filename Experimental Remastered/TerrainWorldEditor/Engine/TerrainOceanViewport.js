@@ -207,6 +207,7 @@ uniform int uLensMode;
 uniform int uShowContours;
 uniform int uShowWireGrid;
 uniform int uIsSelected;
+uniform int uStampMask;
 uniform vec4 uBrushRing;
 
 vec3 acesFilm(vec3 x) {
@@ -242,6 +243,17 @@ void main() {
         float slopeDeg = acos(clamp(N.y, -1.0, 1.0)) * 57.29578;
         baseAlbedo = mix(vec3(0.06, 0.24, 0.16), vec3(0.58, 0.16, 0.08), smoothstep(18.0, 50.0, slopeDeg));
     }
+
+    // Six localized world-space micro-fabrics; masks compose and remain stable while camera moves.
+    vec2 wp = vWorldPos.xz;
+    float pat = 0.0;
+    if ((uStampMask & 1) != 0) pat += (0.5 + 0.5 * sin((wp.x * 0.08 + wp.y * 0.035 + vWorldPos.y * 0.018) * 6.28318)) * 0.11;
+    if ((uStampMask & 2) != 0) pat += (1.0 - smoothstep(0.03, 0.15, abs(sin(wp.x * 0.055) * sin(wp.y * 0.055)))) * 0.12;
+    if ((uStampMask & 4) != 0) { float j = min(abs(fract(wp.x * 0.024) - 0.5), abs(fract(wp.y * 0.024) - 0.5)); pat -= (1.0 - smoothstep(0.015, 0.045, j)) * 0.10; }
+    if ((uStampMask & 8) != 0) pat += (0.5 + 0.5 * sin((wp.x * 0.17 + wp.y * 0.045) * 6.28318)) * 0.09;
+    if ((uStampMask & 16) != 0) { float pits = sin(wp.x * 0.052 + sin(wp.y * 0.038)) * sin(wp.y * 0.049); pat -= (1.0 - smoothstep(0.12, 0.45, pits)) * 0.075; }
+    if ((uStampMask & 32) != 0) { vec2 cell = fract(wp * 0.032) - 0.5; float peb = 1.0 - smoothstep(0.10, 0.22, length(cell)); pat += peb * 0.13; }
+    baseAlbedo = max(vec3(0.012), baseAlbedo * (1.0 + pat));
 
     // Crisp Studio Key + Rim + Deep Valley Shadow Contrast
     float ndl = max(dot(N, uSunDir), 0.0);
@@ -1347,6 +1359,8 @@ export class TerrainOceanViewport
         Gl.uniform4fv(Gl.getUniformLocation(this.terrainProg, 'uBrushRing'), BrushUniform);
 
         const LocSelected = Gl.getUniformLocation(this.terrainProg, 'uIsSelected');
+        const LocStampMask = Gl.getUniformLocation(this.terrainProg, 'uStampMask');
+        const StampBits = new Map([['strata-crossbed',1],['columnar-basalt',2],['granite-joints',4],['wind-flutes-ripples',8],['tafoni-pits',16],['scree-clutter',32]]);
         for (const Region of VisibleRegions)
         {
             const Gpu = this._syncRegionGpuBuffer(Region, Region.id === this.activeRegionId ? PreviewFalloffLayerId : null);
@@ -1354,6 +1368,9 @@ export class TerrainOceanViewport
 
             const IsSel = this.selectedRegionIds.has(Region.id) || this.viewScope === 'all';
             Gl.uniform1i(LocSelected, IsSel ? 1 : 0);
+            let StampMask = 0;
+            for (const Stamp of Region.texturingStamps || []) StampMask |= StampBits.get(Stamp) || 0;
+            Gl.uniform1i(LocStampMask, StampMask);
             Gl.bindVertexArray(Gpu.vao);
             Gl.drawElements(Gl.TRIANGLES, Gpu.indexCount, Gl.UNSIGNED_INT, 0);
 
