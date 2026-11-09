@@ -797,14 +797,41 @@ Frontier::RecordToken EverestWorkspace::DuplicateGeometryRecord(Frontier::Record
     return Created;
 }
 
-Frontier::GeometryConfiguration* EverestWorkspace::ResolveEditedGeometry()
+EverestWorkspace::ViewportEditTarget EverestWorkspace::ResolveEditedSpatial()
 {
-    // 📝 The selected scene object, while it is shown, unlocked and bound (its transform has handles then).
-    auto* Record = dynamic_cast<Frontier::GeometryRecord*>(QueryWorldSpace().FindRecord(OutlinerPanel.QuerySelected()));
-    if (Record == nullptr) return nullptr;
-    Frontier::GeometryConfiguration& Configuration = Record->AccessConfiguration();
-    if (Configuration.Locked || !Configuration.Visible || !Configuration.Resolved.Bound || Configuration.Resolved.Shown == 0) return nullptr;
-    return &Configuration;
+    Frontier::SceneRecordBase* Entry = QueryWorldSpace().FindRecord(OutlinerPanel.QuerySelected());
+    if (Entry == nullptr) return {};
+
+    // 📝 Geometry keeps the legacy SpatialConfiguration nested beside its archive/modifier state.
+    if (auto* Record = dynamic_cast<Frontier::GeometryRecord*>(Entry))
+    {
+        Frontier::GeometryConfiguration& Configuration = Record->AccessConfiguration();
+        if (Configuration.Locked || !Configuration.Visible || !Configuration.Resolved.Bound || Configuration.Resolved.Shown == 0) return {};
+        return {&Configuration.Spatial, nullptr, &Configuration.Spatial, &Configuration};
+    }
+    // 📝 Particle and fluid-plume records already carry the shared SpatialProfile used by the generic gizmo adapter.
+    if (auto* Record = dynamic_cast<Frontier::ParticleRecord*>(Entry))
+    {
+        Frontier::ParticleConfiguration& Configuration = Record->AccessConfiguration();
+        if (!Configuration.Enabled) return {};
+        return {nullptr, &Configuration.Spatial, nullptr, &Configuration};
+    }
+    if (auto* Record = dynamic_cast<Frontier::FluidPlumeRecord*>(Entry))
+    {
+        Frontier::FluidPlumeConfiguration& Configuration = Record->AccessConfiguration();
+        if (!Configuration.Enabled) return {};
+        return {nullptr, &Configuration.Spatial, nullptr, &Configuration};
+    }
+    // 📝 The composable body records expose SpatialConfiguration directly; one placement tool edits their shared transform.
+    if (auto* Record = dynamic_cast<Frontier::SpatialNodeRecord*>(Entry))
+        return {&Record->AccessSpatial(), nullptr, &Record->AccessSpatial(), &Record->AccessSpatial()};
+    if (auto* Record = dynamic_cast<Frontier::RigidBodyRecord*>(Entry))
+        return {&Record->AccessSpatial(), nullptr, &Record->AccessSpatial(), &Record->AccessSpatial()};
+    if (auto* Record = dynamic_cast<Frontier::ThermalBodyRecord*>(Entry))
+        return {&Record->AccessSpatial(), nullptr, &Record->AccessSpatial(), &Record->AccessSpatial()};
+    if (auto* Record = dynamic_cast<Frontier::ChemicalVesselRecord*>(Entry))
+        return {&Record->AccessSpatial(), nullptr, &Record->AccessSpatial(), &Record->AccessSpatial()};
+    return {};
 }
 
 Frontier::PlacementView EverestWorkspace::ResolvePlacementView(const ImVec2& StageMin, const ImVec2& StageExtent) const
@@ -1154,10 +1181,15 @@ void EverestWorkspace::ConstructViewportSurface()
     //    without moving picks the object under the pointer (Project Zero's viewport selection).
     const ImVec2                     StageExtent(W, H - BarH);
     const Frontier::PlacementView    View   = ResolvePlacementView(StageMin, StageExtent);
-    Frontier::GeometryConfiguration* Edited = ResolveEditedGeometry();
+    const ViewportEditTarget Edited = ResolveEditedSpatial();
+    const auto ProbeEdited = [&](ImVec2 Pointer) {
+        if (Edited.LegacySpatial != nullptr) return Gizmo.Probe(View, GizmoMode, *Edited.LegacySpatial, Pointer, Scale);
+        if (Edited.SpatialProfile != nullptr) return Gizmo.Probe(View, GizmoMode, *Edited.SpatialProfile, Pointer, Scale);
+        return -1;
+    };
     if (StageHovered && ImGui::IsMouseClicked(ImGuiMouseButton_Left) && !IO.KeyAlt && !ImGui::IsMouseDown(ImGuiMouseButton_Right))
     {
-        GizmoPress  = Edited != nullptr && Gizmo.Probe(View, GizmoMode, Edited->Spatial, IO.MousePos, Scale) >= 0;
+        GizmoPress  = static_cast<bool>(Edited) && ProbeEdited(IO.MousePos) >= 0;
         PickPending = !GizmoPress;
         PickPress   = IO.MousePos;
     }
@@ -1253,14 +1285,26 @@ void EverestWorkspace::ConstructViewportSurface()
     {
         ConstructViewportSchematic(DrawList, StageMin, Max);
     }
-    if (Edited != nullptr && Image.Texture != 0)
+    if (Edited && Image.Texture != 0)
     {
-        const Frontier::PlacementGizmoOutcome Outcome = Gizmo.Construct(DrawList, View, GizmoMode, Edited->Spatial, IO.KeyCtrl, GizmoPress, Scale);
-        if (Outcome.Changed) Edited->AdvanceRevision();
+        Frontier::PlacementGizmoOutcome Outcome;
+        if (Edited.LegacySpatial != nullptr)
+            Outcome = Gizmo.Construct(DrawList, View, GizmoMode, *Edited.LegacySpatial, IO.KeyCtrl, GizmoPress, Scale);
+        else if (Edited.SpatialProfile != nullptr)
+            Outcome = Gizmo.Construct(DrawList, View, GizmoMode, *Edited.SpatialProfile, IO.KeyCtrl, GizmoPress, Scale);
+        if (Outcome.Changed)
+        {
+            if (Edited.SpatialRevision != nullptr && Edited.SpatialRevision != Edited.OwnerRevision)
+                Edited.SpatialRevision->AdvanceRevision();
+            if (Edited.OwnerRevision != nullptr) Edited.OwnerRevision->AdvanceRevision();
+        }
         if (Outcome.Engaged && ImGui::IsKeyPressed(ImGuiKey_Escape, false))
         {
-            Gizmo.Cancel(Edited->Spatial);
-            Edited->AdvanceRevision();
+            if (Edited.LegacySpatial != nullptr) Gizmo.Cancel(*Edited.LegacySpatial);
+            else if (Edited.SpatialProfile != nullptr) Gizmo.Cancel(*Edited.SpatialProfile);
+            if (Edited.SpatialRevision != nullptr && Edited.SpatialRevision != Edited.OwnerRevision)
+                Edited.SpatialRevision->AdvanceRevision();
+            if (Edited.OwnerRevision != nullptr) Edited.OwnerRevision->AdvanceRevision();
         }
     }
     if (ImGui::IsMouseReleased(ImGuiMouseButton_Left))

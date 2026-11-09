@@ -223,8 +223,10 @@ Rewrite and harden each foundational space and extension over Phases 1–2 (and 
      placement and pick result types to `SubjectPlacement` / `SubjectPick` and the viewport query to `PickSubjects`. Added the
      `SpatialEditable` concept and generic `PlacementGizmo` profile adapters, with compile-time API checks in the geometry
      validation source. Syntax checks cover the renamed translation units and geometry/pick validation sources. The wider
-     vocabulary cleanup is still open for legacy `OccupantEntry`/`Occupants` records, GPU interface names, and `Frame` identifiers;
-     active record/workspace wiring of the new gizmo adapter is also pending.
+     vocabulary cleanup is still open for legacy `OccupantEntry`/`Occupants` records, GPU interface names, and `Frame` identifiers.
+     **Active workspace wiring (2026-11-09):** the Everest viewport routes selected Geometry, Particle, FluidPlume, SpatialNode,
+     RigidBody, ThermalBody, and ChemicalVessel transforms through PlacementGizmo, preserving profile and owner revisions and
+     supporting Escape cancellation. Facetspace resolution and collision export remain open.
    - Resolve `<ArchiveStem>.facetspace` dynamically and export bounded `TriangleSurfaceShape` collision triangles from
      `SceneSubjectPlacement` to `PhysicsExtension`.
    - Generalize `GizmoSpace` / `PlacementGizmo` via a C++20 `SpatialEditable` concept so one gizmo binds to any entry

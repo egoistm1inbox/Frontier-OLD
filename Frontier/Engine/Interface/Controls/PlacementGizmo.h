@@ -71,6 +71,11 @@ class PlacementGizmo
     //    Z), 7 Move's centre ring (the screen plane), −1 none.
     [[nodiscard]] int Probe(const PlacementView& View, PlacementGizmoMode Mode, const SpatialConfiguration& Spatial, ImVec2 Pointer,
                             float Scale) const;
+    [[nodiscard]] int Probe(const PlacementView& View, PlacementGizmoMode Mode, const SpatialProfile& Spatial, ImVec2 Pointer,
+                            float Scale) const
+    {
+        return Probe(View, Mode, BridgeSpatial(Spatial), Pointer, Scale);
+    }
 
     template <SpatialEditable EntryT>
     [[nodiscard]] int Probe(const PlacementView& View, PlacementGizmoMode Mode, const EntryT& Editable, ImVec2 Pointer, float Scale) const
@@ -83,6 +88,14 @@ class PlacementGizmo
     //    the release. Snap (Ctrl) rounds to 0.25 m, 15° and 0.1.
     PlacementGizmoOutcome Construct(ImDrawList* DrawList, const PlacementView& View, PlacementGizmoMode Mode, SpatialConfiguration& Spatial,
                                     bool Snap, bool PressAllowed, float Scale);
+    PlacementGizmoOutcome Construct(ImDrawList* DrawList, const PlacementView& View, PlacementGizmoMode Mode, SpatialProfile& Spatial,
+                                    bool Snap, bool PressAllowed, float Scale)
+    {
+        SpatialConfiguration Configuration = BridgeSpatial(Spatial);
+        const PlacementGizmoOutcome Outcome = Construct(DrawList, View, Mode, Configuration, Snap, PressAllowed, Scale);
+        if (Outcome.Changed) ApplySpatial(Spatial, Configuration);
+        return Outcome;
+    }
 
     template <SpatialEditable EntryT>
     PlacementGizmoOutcome Construct(ImDrawList* DrawList, const PlacementView& View, PlacementGizmoMode Mode, EntryT& Editable,
@@ -98,6 +111,13 @@ class PlacementGizmo
 
     // 📝 Ends a drag and puts the transform back where it began (Escape).
     void Cancel(SpatialConfiguration& Spatial) noexcept;
+    void Cancel(SpatialProfile& Spatial) noexcept
+    {
+        if (!QueryEngaged()) return;
+        SpatialConfiguration Configuration = BridgeSpatial(Spatial);
+        Cancel(Configuration);
+        ApplySpatial(Spatial, Configuration);
+    }
 
     template <SpatialEditable EntryT>
     void Cancel(EntryT& Editable) noexcept

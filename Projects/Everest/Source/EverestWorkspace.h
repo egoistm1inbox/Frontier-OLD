@@ -207,7 +207,19 @@ class EverestWorkspace
     void ApplyPendingSurfaces();
     [[nodiscard]] std::string ResolveUniqueName(const std::string& Stem) const;
     [[nodiscard]] std::array<double, 3> ResolveGroundTarget() const;
-    [[nodiscard]] Frontier::GeometryConfiguration* ResolveEditedGeometry();
+    struct ViewportEditTarget
+    {
+        Frontier::SpatialConfiguration* LegacySpatial = nullptr;
+        Frontier::SpatialProfile*       SpatialProfile = nullptr;
+        Frontier::RevisionCounter*      SpatialRevision = nullptr;
+        Frontier::RevisionCounter*      OwnerRevision = nullptr;
+
+        [[nodiscard]] explicit operator bool() const noexcept
+        {
+            return LegacySpatial != nullptr || SpatialProfile != nullptr;
+        }
+    };
+    [[nodiscard]] ViewportEditTarget ResolveEditedSpatial();
     [[nodiscard]] Frontier::PlacementView ResolvePlacementView(const ImVec2& StageMin, const ImVec2& StageExtent) const;
     void ConstructViewportSurface();
     void ConstructViewportSchematic(ImDrawList* DrawList, const ImVec2& Min, const ImVec2& Max);
