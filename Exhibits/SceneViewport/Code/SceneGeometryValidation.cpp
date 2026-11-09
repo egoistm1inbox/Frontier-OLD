@@ -96,6 +96,10 @@ int main(int ArgumentCount, char** Arguments)
             throw std::runtime_error("usage: SceneGeometryValidation <Projects/Everest> <EnvironmentArchives/ProvingGround> [scratch] [ShapeArchives]");
         const std::filesystem::path Project = Arguments[1];
         const std::filesystem::path Archive = Arguments[2];
+        Report(Frontier::GlobalIllumination::ResolveFacetSpacePath(Archive) == Archive / (Archive.filename().string() + ".facetspace") &&
+                   Frontier::GlobalIllumination::ResolveFacetSpacePath(Archive / (Archive.filename().string() + ".facetspace")) ==
+                       Archive / (Archive.filename().string() + ".facetspace"),
+               "facetspace resolution derives the file stem from any archive directory and accepts explicit .facetspace paths");
         const std::filesystem::path Scratch = ArgumentCount > 3 ? std::filesystem::path(Arguments[3]) : std::filesystem::temp_directory_path();
         std::filesystem::create_directories(Scratch);
 
@@ -156,6 +160,21 @@ int main(int ArgumentCount, char** Arguments)
         Report(Exact == Initial.size() && Active == Initial.size(),
                std::to_string(Exact) + " of " + std::to_string(Initial.size()) + " placements are the archive's transforms bit for bit, all active");
         Report(GeometryPlacement.ResolvePlacements(World).empty(), "an unchanged level resolves no placements again");
+        {
+            const auto Meshes = GeometryPlacement.ExportStaticCollisionMeshes(World, 128);
+            size_t Triangles = 0;
+            bool Valid = !Meshes.empty();
+            for (const Frontier::SceneCollisionMesh& Mesh : Meshes)
+            {
+                Triangles += Mesh.Indices.size() / 3u;
+                Valid = Valid && Mesh.Indices.size() % 3u == 0u;
+                for (const uint32_t Index : Mesh.Indices) Valid = Valid && Index < Mesh.VerticesMetres.size();
+                for (const auto& Vertex : Mesh.VerticesMetres)
+                    Valid = Valid && std::isfinite(Vertex[0]) && std::isfinite(Vertex[1]) && std::isfinite(Vertex[2]);
+            }
+            Report(Valid && Triangles > 0 && Triangles <= 128,
+                   std::to_string(Triangles) + " finite world-space static collision triangles exported within the explicit budget");
+        }
 
         // ④ a smaller array hides the copies past its count
         auto& North = FindGeometry(World, "Boundary north")->AccessConfiguration();

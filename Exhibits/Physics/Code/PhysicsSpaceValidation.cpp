@@ -24,6 +24,7 @@
 #include <cstring>
 #include <filesystem>
 #include <fstream>
+#include <limits>
 #include <string>
 #include <vector>
 
@@ -412,10 +413,18 @@ int main(int ArgumentCount, char** Arguments)
             Stand.Resolved.BoundsMinimum[0] = -1.0f, Stand.Resolved.BoundsMinimum[1] = -1.0f, Stand.Resolved.BoundsMinimum[2] = 0.0f;
             Stand.Resolved.BoundsMaximum[0] = 1.0f, Stand.Resolved.BoundsMaximum[1] = 1.0f, Stand.Resolved.BoundsMaximum[2] = 2.0f;
             PhysicsExtension Bridge;
-            const size_t     MovingBodies = Bridge.Begin(World);
+            const std::array<uint64_t, 1> TriangleRecords{PedestalRecord->QueryToken().Value};
+            const size_t MovingBodies = Bridge.Begin(World, {}, TriangleRecords);
+            PhysicsTriangleSurfaceShape PedestalMesh;
+            PedestalMesh.VerticesMetres = {{{-1.0, -1.0, 0.0}}, {{1.0, -1.0, 0.0}}, {{1.0, 1.0, 0.0}}, {{-1.0, 1.0, 0.0}},
+                                            {{-1.0, -1.0, 2.0}}, {{1.0, -1.0, 2.0}}, {{1.0, 1.0, 2.0}}, {{-1.0, 1.0, 2.0}}};
+            PedestalMesh.Indices = {4, 5, 6, 4, 6, 7, 0, 2, 1, 0, 3, 2, 0, 1, 5, 0, 5, 4,
+                                    3, 7, 6, 3, 6, 2, 0, 4, 7, 0, 7, 3, 1, 2, 6, 1, 6, 5};
+            const uint32_t MeshBody = Bridge.AddTriangleSurfaceCollider(PedestalRecord->QueryToken().Value, PedestalMesh);
             for (int Step = 0; Step < 4 * 60; ++Step) (void)Bridge.Step(World, 1.0 / 60.0);
             const float Rested = Box.Spatial.PositionMetres[2];
-            Expect(MovingBodies == 1 && Bridge.QueryTally().Fixed == 2, "the bridge makes 1 moving body and 2 colliders (ground, pedestal)");
+            Expect(MovingBodies == 1 && MeshBody != std::numeric_limits<uint32_t>::max() && Bridge.QueryTally().Fixed == 2,
+                   "the bridge makes 1 moving body, a ground collider and one triangle surface instead of a pedestal AABB");
             Expect(Bridge.QueryTally().Held == 1, "a record with six copies is held, not turned into one body for all of them");
             Expect(std::abs(Rested - 2.5f) < 0.03f, "the crate record lands on the pedestal record: origin at " + Figure("%.3f", Rested) + " m (2.5 expected)");
             Bridge.End(World);

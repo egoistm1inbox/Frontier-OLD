@@ -1478,8 +1478,25 @@ void EverestWorkspace::ToggleSimulation()
         AnnounceViewportNotice("Simulation stopped \xC2\xB7 objects restored");
         return;
     }
-    const size_t Moving = Physics->Begin(QueryWorldSpace());
-    const auto&  Tally  = Physics->QueryTally();
+    std::vector<Frontier::SceneCollisionMesh> TriangleMeshes = ResolveSceneCollisionGeometry ? ResolveSceneCollisionGeometry()
+                                                                                              : std::vector<Frontier::SceneCollisionMesh>{};
+    std::vector<uint64_t> TriangleSurfaceRecords;
+    for (const Frontier::SceneCollisionMesh& Mesh : TriangleMeshes)
+    {
+        const bool Valid = !Mesh.Indices.empty() && Mesh.Indices.size() % 3u == 0u &&
+                           std::all_of(Mesh.Indices.begin(), Mesh.Indices.end(), [&](uint32_t Index) { return Index < Mesh.VerticesMetres.size(); });
+        if (Valid) TriangleSurfaceRecords.push_back(Mesh.RecordId);
+    }
+    const size_t Moving = Physics->Begin(QueryWorldSpace(), {}, TriangleSurfaceRecords);
+    for (Frontier::SceneCollisionMesh& Mesh : TriangleMeshes)
+    {
+        if (std::find(TriangleSurfaceRecords.begin(), TriangleSurfaceRecords.end(), Mesh.RecordId) == TriangleSurfaceRecords.end()) continue;
+        Frontier::PhysicsTriangleSurfaceShape Shape;
+        Shape.VerticesMetres = std::move(Mesh.VerticesMetres);
+        Shape.Indices        = std::move(Mesh.Indices);
+        (void)Physics->AddTriangleSurfaceCollider(Mesh.RecordId, Shape);
+    }
+    const auto& Tally = Physics->QueryTally();
     char         Text[160];
     if (Moving > 0)
         std::snprintf(Text, sizeof(Text), "Simulating \xC2\xB7 %zu moving, %zu colliders, %zu groups held (Alt+S stops)", Moving, Tally.Fixed, Tally.Held);

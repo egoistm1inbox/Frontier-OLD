@@ -40,6 +40,7 @@ class PhysicsExtension;
 #include <optional>
 #include <string>
 #include <unordered_map>
+#include <vector>
 
 namespace Everest
 {
@@ -149,6 +150,8 @@ class EverestWorkspace
     std::function<void()> EvaluateReturnToBrowser;
     // 📝 Set by the host application when it can render the scene; the viewport falls back to its schematic without it.
     std::function<SceneViewportImage(const SceneViewportRequest&)> PresentSceneViewport;
+    // 📝 The host's active SceneSubjectPlacement export, sampled once when simulation starts to install static triangle colliders.
+    std::function<std::vector<Frontier::SceneCollisionMesh>()> ResolveSceneCollisionGeometry;
     // 📝 Set by the host application: hides the pointer and locks it to the platform window (an ImGuiViewport's
     //    PlatformHandle) while a camera drag lasts, so the view turns without the pointer meeting the screen edge; the
     //    pointer returns where the drag began. Without it the pointer stays visible and free.

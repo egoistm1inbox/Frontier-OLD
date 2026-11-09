@@ -83,9 +83,9 @@ bool SceneViewport::Construct(const VulkanDeviceAccess* HostDevice, const SceneV
     }
     if (Configuration.Journal) Configuration.Journal("bring-up on " + Adapter_ + " (" + (HostDevice != nullptr ? "the editor's device" : "an own device") + ")");
 
-    // ① the proving ground exactly as the demo built it, the vehicle deactivated (no car yet)
+    // ① the configured scene archive (the vehicle remains deactivated until its engine integration is enabled).
     IlluminationAssets Assets;
-    Assets.FacetSpace  = Configuration.SceneArchive / "ProvingGround.facetspace";
+    Assets.FacetSpace = Frontier::GlobalIllumination::ResolveFacetSpacePath(Configuration.SceneArchive);
     Assets.OmitVehicle = true;
     if (!ReadArchive(Configuration.SceneArchive / "Materials.bin", Assets.MaterialProfiles, OutDiagnostic)) return false;
     // 📝 Beyond the demo: the engine shapes (EngineContent/ShapeArchives) and the editor's reserve of occupants for copies and

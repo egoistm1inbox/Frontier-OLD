@@ -86,7 +86,7 @@ uint64_t PhysicsExtension::ComputeWorldBindingSignature(const WorldSpace& World)
     return Seed;
 }
 
-size_t PhysicsExtension::Begin(WorldSpace& World, const PhysicsSpaceSettings& Settings)
+size_t PhysicsExtension::Begin(WorldSpace& World, const PhysicsSpaceSettings& Settings, std::span<const uint64_t> TriangleSurfaceRecords)
 {
     StopExecutionThread();
     if (Space)
@@ -97,12 +97,13 @@ size_t PhysicsExtension::Begin(WorldSpace& World, const PhysicsSpaceSettings& Se
         std::lock_guard<std::mutex> Guard(SpaceMutex_);
         Space = std::make_unique<PhysicsSpace>(Settings);
     }
-    return PopulateWorldBodies(World);
+    return PopulateWorldBodies(World, TriangleSurfaceRecords);
 }
 
 size_t PhysicsExtension::BeginWithSubstrate(WorldSpace&                      World,
                                             std::unique_ptr<IPhysicsSubstrate> Substrate,
-                                            const PhysicsSpaceSettings&        Settings)
+                                            const PhysicsSpaceSettings&        Settings,
+                                            std::span<const uint64_t>          TriangleSurfaceRecords)
 {
     StopExecutionThread();
     if (Space)
@@ -113,10 +114,10 @@ size_t PhysicsExtension::BeginWithSubstrate(WorldSpace&                      Wor
         std::lock_guard<std::mutex> Guard(SpaceMutex_);
         Space = std::make_unique<PhysicsSpace>(std::move(Substrate), Settings);
     }
-    return PopulateWorldBodies(World);
+    return PopulateWorldBodies(World, TriangleSurfaceRecords);
 }
 
-size_t PhysicsExtension::PopulateWorldBodies(WorldSpace& World)
+size_t PhysicsExtension::PopulateWorldBodies(WorldSpace& World, std::span<const uint64_t> TriangleSurfaceRecords)
 {
     std::lock_guard<std::mutex> Guard(SpaceMutex_);
     Links.clear();
@@ -198,15 +199,18 @@ size_t PhysicsExtension::PopulateWorldBodies(WorldSpace& World)
         }
         else if (Geometry.Visible && Resolved.Shown == 1 && Bounded)
         {
-            PhysicsBodyDescriptor Collider;
-            Collider.Record           = Record->QueryToken().Value;
-            Collider.HalfExtentMetres = { 0.5 * World3[0], 0.5 * World3[1], 0.5 * World3[2] };
-            Collider.PositionMetres   = { 0.5 * (Minimum[0] + Maximum[0]), 0.5 * (Minimum[1] + Maximum[1]),
-                                          0.5 * (Minimum[2] + Maximum[2]) };
-            Collider.Motion           = PhysicsMotion::Fixed;
-            if (Space->AddBody(Collider) != std::numeric_limits<uint32_t>::max())
+            // 📝 SceneSubjectPlacement supplies a tighter static mesh when available; retain the bounds fallback otherwise.
+            const bool HasTriangleSurface = std::find(TriangleSurfaceRecords.begin(), TriangleSurfaceRecords.end(), Record->QueryToken().Value) !=
+                                            TriangleSurfaceRecords.end();
+            if (!HasTriangleSurface)
             {
-                ++Tally.Fixed;
+                PhysicsBodyDescriptor Collider;
+                Collider.Record           = Record->QueryToken().Value;
+                Collider.HalfExtentMetres = { 0.5 * World3[0], 0.5 * World3[1], 0.5 * World3[2] };
+                Collider.PositionMetres   = { 0.5 * (Minimum[0] + Maximum[0]), 0.5 * (Minimum[1] + Maximum[1]),
+                                              0.5 * (Minimum[2] + Maximum[2]) };
+                Collider.Motion           = PhysicsMotion::Fixed;
+                if (Space->AddBody(Collider) != std::numeric_limits<uint32_t>::max()) ++Tally.Fixed;
             }
         }
         else

@@ -226,9 +226,13 @@ Rewrite and harden each foundational space and extension over Phases 1–2 (and 
      vocabulary cleanup is still open for legacy `OccupantEntry`/`Occupants` records, GPU interface names, and `Frame` identifiers.
      **Active workspace wiring (2026-11-09):** the Everest viewport routes selected Geometry, Particle, FluidPlume, SpatialNode,
      RigidBody, ThermalBody, and ChemicalVessel transforms through PlacementGizmo, preserving profile and owner revisions and
-     supporting Escape cancellation. Facetspace resolution and collision export remain open.
+     supporting Escape cancellation. `SceneStructure::ResolveFacetSpacePath` derives `<ArchiveStem>.facetspace` from the archive
+     directory (and accepts an explicit file path). `SceneSubjectPlacement::ExportStaticCollisionMeshes` exports finite world-space
+     triangles under a fixed count budget; Everest installs them as fixed `TriangleSurfaceShape` colliders at simulation start and
+     skips the same records' coarse AABBs. CPU exhibit verification passes 29/29 checks. Legacy `Occupant*`/`Frame` naming cleanup
+     remains open.
    - Resolve `<ArchiveStem>.facetspace` dynamically and export bounded `TriangleSurfaceShape` collision triangles from
-     `SceneSubjectPlacement` to `PhysicsExtension`.
+     `SceneSubjectPlacement` to `PhysicsExtension`. **Done (checkpoint above).**
    - Generalize `GizmoSpace` / `PlacementGizmo` via a C++20 `SpatialEditable` concept so one gizmo binds to any entry
      carrying `SpatialProfile` (`Geometry`, `Particle`, `ForceField`, `Fluid`, `Effect`, `Physics`).
 

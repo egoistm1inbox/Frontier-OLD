@@ -15,6 +15,7 @@
 #include <optional>
 #include <string>
 #include <unordered_map>
+#include <vector>
 
 namespace Frontier
 {
@@ -74,6 +75,14 @@ struct SceneViewportReadout
     std::shared_ptr<const std::unordered_map<uint64_t, GeometryConfiguration::Resolution>> Geometry{};
     uint64_t                GeometryGeneration  = 0;
     SceneViewportPick       Pick{};                          // [-] the answer to the last click on the stage
+};
+
+// 📝 Bounded world-space triangle mesh exported by the scene renderer for static PhysicsExtension colliders.
+struct SceneCollisionMesh
+{
+    uint64_t                            RecordId = 0;
+    std::vector<std::array<double, 3>> VerticesMetres{};
+    std::vector<uint32_t>              Indices{};
 };
 
 struct SceneViewportImage

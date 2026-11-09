@@ -19,6 +19,7 @@
 #include <concepts>
 #include <memory>
 #include <mutex>
+#include <span>
 #include <thread>
 #include <vector>
 
@@ -57,11 +58,12 @@ class PhysicsExtension
     PhysicsExtension();
     ~PhysicsExtension();
 
-    // 📝 Builds the space from the level and remembers every moved record's transform. Returns the moving bodies.
-    size_t Begin(WorldSpace& World, const PhysicsSpaceSettings& Settings = {});
+    // 📝 Builds the space from the level and remembers moved transforms. Optional record IDs replace static AABB approximations
+    //    with the supplied SceneSubjectPlacement triangle surfaces; returns the moving bodies.
+    size_t Begin(WorldSpace& World, const PhysicsSpaceSettings& Settings = {}, std::span<const uint64_t> TriangleSurfaceRecords = {});
     // 📝 Same as Begin, injecting a custom IPhysicsSubstrate (e.g. deterministic headless test substrate).
     size_t BeginWithSubstrate(WorldSpace& World, std::unique_ptr<IPhysicsSubstrate> Substrate,
-                              const PhysicsSpaceSettings& Settings = {});
+                              const PhysicsSpaceSettings& Settings = {}, std::span<const uint64_t> TriangleSurfaceRecords = {});
 
     // 📝 Steps the space (in sub-steps of at most 1/60 s) and writes the moving bodies back. Returns the records written.
     size_t Step(WorldSpace& World, double DeltaSeconds);
@@ -90,7 +92,7 @@ class PhysicsExtension
     [[nodiscard]] uint64_t                     QueryLastSignature() const noexcept { return LastSignature_; }
 
   private:
-    size_t PopulateWorldBodies(WorldSpace& World);
+    size_t PopulateWorldBodies(WorldSpace& World, std::span<const uint64_t> TriangleSurfaceRecords);
 
     struct Link
     {

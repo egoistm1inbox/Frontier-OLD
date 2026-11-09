@@ -10,7 +10,9 @@
 
 #include <algorithm>
 #include <cctype>
+#include <cmath>
 #include <cstring>
+#include <limits>
 #include <set>
 #include <utility>
 
@@ -611,6 +613,63 @@ std::vector<Frontier::GlobalIllumination::SubjectPlacement> SceneSubjectPlacemen
         ++Generation_;
     }
     return Placements;
+}
+
+
+std::vector<Frontier::SceneCollisionMesh> SceneSubjectPlacement::ExportStaticCollisionMeshes(const Frontier::WorldSpace& World,
+                                                                                              uint32_t MaximumTriangleCount) const
+{
+    std::vector<Frontier::SceneCollisionMesh> Meshes;
+    const uint32_t TriangleBudget = std::min(MaximumTriangleCount, std::numeric_limits<uint32_t>::max() / 3u);
+    if (Scene_ == nullptr || TriangleBudget == 0) return Meshes;
+    uint32_t WrittenTriangles = 0;
+    std::vector<uint64_t> RecordIds;
+    RecordIds.reserve(PlacementStates_.size());
+    for (const auto& [RecordId, Entry] : PlacementStates_) RecordIds.push_back(RecordId);
+    std::sort(RecordIds.begin(), RecordIds.end());
+    for (const uint64_t RecordId : RecordIds)
+    {
+        const PlacementState& Entry = PlacementStates_.at(RecordId);
+        const auto* Record = dynamic_cast<const Frontier::GeometryRecord*>(World.FindRecord(Frontier::RecordToken{RecordId}));
+        if (Record == nullptr) continue;
+        const Frontier::GeometryConfiguration& Configuration = Record->QueryConfiguration();
+        if (!Configuration.Visible || Configuration.Physics || Configuration.Dynamic || Entry.Templates.empty() ||
+            Entry.Shown.size() != Entry.Templates.size()) continue;
+
+        uint64_t ExpectedTriangles = 0;
+        for (const ShownOccupant& Shown : Entry.Shown)
+            if (Shown.FacetSet < Scene_->FacetSets.size()) ExpectedTriangles += Scene_->FacetSets[Shown.FacetSet].Facets.size();
+        if (ExpectedTriangles > static_cast<uint64_t>(TriangleBudget - WrittenTriangles)) continue;
+
+        Frontier::SceneCollisionMesh Mesh;
+        Mesh.RecordId = RecordId;
+        for (const ShownOccupant& Shown : Entry.Shown)
+        {
+            if (Shown.FacetSet >= Scene_->FacetSets.size()) continue;
+            const auto& Facets = Scene_->FacetSets[Shown.FacetSet].Facets;
+            for (const auto& Facet : Facets)
+            {
+                std::array<std::array<double, 3>, 3> Points{};
+                bool Valid = true;
+                for (size_t CornerIndex = 0; CornerIndex < Facet.Corners.size(); ++CornerIndex)
+                {
+                    Points[CornerIndex] = Frontier::GlobalIllumination::TransformPoint(Shown.Placement, Facet.Corners[CornerIndex]);
+                    for (const double Component : Points[CornerIndex]) Valid = Valid && std::isfinite(Component);
+                }
+                if (!Valid || Mesh.VerticesMetres.size() > std::numeric_limits<uint32_t>::max() - 3u) continue;
+                const uint32_t First = static_cast<uint32_t>(Mesh.VerticesMetres.size());
+                Mesh.VerticesMetres.insert(Mesh.VerticesMetres.end(), Points.begin(), Points.end());
+                Mesh.Indices.insert(Mesh.Indices.end(), {First, First + 1u, First + 2u});
+                ++WrittenTriangles;
+            }
+        }
+        if (!Mesh.Indices.empty())
+        {
+            WrittenTriangles += static_cast<uint32_t>(Mesh.Indices.size() / 3u);
+            Meshes.push_back(std::move(Mesh));
+        }
+    }
+    return Meshes;
 }
 
 } // namespace Frontier

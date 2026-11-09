@@ -126,6 +126,13 @@ struct DrawRun
     uint32_t Count    = 0;
 };
 
+[[nodiscard]] inline std::filesystem::path ResolveFacetSpacePath(const std::filesystem::path& Archive)
+{
+    if (Archive.extension() == ".facetspace") return Archive;
+    const std::string Stem = Archive.filename().string();
+    return Archive / (Stem + ".facetspace");
+}
+
 class SceneStructure
 {
   public:

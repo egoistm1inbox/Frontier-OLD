@@ -544,6 +544,8 @@ editor's objects:
 | 37 records, all bound; 504 occupants bound once each; the rest are vehicle, pools and tiles     | ✔️      |
 | the default level's 504 placements are the archive's transforms bit for bit, all active         | ✔️      |
 | an unchanged level resolves no placements again                                                 | ✔️      |
+| archive directories resolve `<stem>.facetspace`, with explicit `.facetspace` paths preserved    | ✔️      |
+| 128 finite world-space static collision triangles export within the explicit budget            | ✔️      |
 | Boundary north at count 20: 20 copies in place, 34 hidden                                       | ✔️      |
 | Boundary north at a 5 m step: copy n at x = −58 + 5n (error 0)                                  | ✔️      |
 | Kerbs moved 2 m: both strips' 36 occupants moved exactly (error 4.8 × 10⁻⁷)                     | ✔️      |
@@ -569,7 +571,7 @@ editor's objects:
   how many. At most 96 objects have surfaces of their own.
 - The rotation rings follow the Euler angles (Z, then Y, then X): the X and Y rings turn about the object's tilted
   axes, not the world's.
-- Fracture is a no-op and Physics waits for the physics engine (Jolt).
+- Fracture is a no-op. Physics uses Jolt; the viewport can supply bounded static triangle surfaces, with world-bounds colliders as fallback.
 - Changing a shape archive's form needs `ShapeArchiveBake` again (the check reports a stale volume).
 - The speed of these paths on a GPU was not measured here: everything ran on SwiftShader.
 

@@ -20,7 +20,8 @@ In the editor, Simulate turns the level into a PhysicsSpace:
 
 - A Geometry record with **Physics** on (Inspector › quick controls) becomes a moving box the size of its resolved
   extent.
-- Every other single shown object becomes a fixed collider over its world bounds, and RigidBody records become spheres.
+- Static Geometry uses a bounded world-space triangle surface exported from `SceneSubjectPlacement` when the scene renderer provides it;
+  other single shown objects keep the fixed world-bounds fallback, and RigidBody records become spheres.
 - A 4 km ground slab tops out at z = 0.
 - Each step writes the moving bodies back into their records. Stopping, or saving the level, puts every object back.
 
@@ -34,7 +35,7 @@ In the editor, Simulate turns the level into a PhysicsSpace:
 - A five-cube stack.
 - A 30-body pile settling bit-identically twice.
 - The level's Euler convention through quaternions.
-- The level bridge: a Geometry record lands on a pedestal record and is put back.
+- The level bridge: a Geometry record lands on a pedestal TriangleSurface collider and is put back; the explicit record-ID handoff suppresses the pedestal's coarse AABB.
 - A 1000-box timing.
 
 The ledger is in `Results/PhysicsSpaceValidation.md`.

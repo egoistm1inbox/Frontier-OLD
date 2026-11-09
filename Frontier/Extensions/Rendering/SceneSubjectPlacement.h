@@ -9,6 +9,7 @@
 #include "Frontier/Engine/Rendering/GlobalIllumination/SubjectRelocation.h"
 #include "Frontier/Engine/Rendering/GlobalIllumination/PickProjection.h"
 #include "Frontier/Engine/Rendering/GlobalIllumination/SceneStructure.h"
+#include "Frontier/Engine/Interface/SceneViewportPresentation.h"
 #include "Frontier/Engine/Scene/GeometryLayout.h"
 #include "Frontier/Engine/Scene/WorldSpace.h"
 
@@ -61,6 +62,10 @@ class SceneSubjectPlacement
     //    archive copies, its copies beyond them from the reserve, and the archive occupants nobody claims any more (hidden while the
     //    level holds Geometry records, back at the archive's placements once it holds none).
     [[nodiscard]] std::vector<Frontier::GlobalIllumination::SubjectPlacement> ResolvePlacements(const Frontier::WorldSpace& World);
+
+    // 📝 Exports visible, static resolved facet placements as world-space triangle meshes; the total triangle budget bounds memory.
+    [[nodiscard]] std::vector<SceneCollisionMesh> ExportStaticCollisionMeshes(const Frontier::WorldSpace& World,
+                                                                               uint32_t MaximumTriangleCount = 200000) const;
 
     // 📝 The material blocks (block, MaterialFamilyCount records) changed since the last call; the viewport writes them before it
     //    applies the placements, whose cards are captured again from them.

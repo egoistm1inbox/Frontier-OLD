@@ -506,6 +506,10 @@ int main()
                 }
                 return Image;
             };
+            EverestSpace->ResolveSceneCollisionGeometry = [&]() {
+                return SceneView ? SceneView->QueryGeometry().ExportStaticCollisionMeshes(EverestSpace->QueryWorldSpace())
+                                 : std::vector<Frontier::SceneCollisionMesh>{};
+            };
             Frontier::InspectorRuntime::Instance().RegisterParticleViewportPresenter(
                 [&](const Frontier::ParticleViewportRequest &Request)
                 {

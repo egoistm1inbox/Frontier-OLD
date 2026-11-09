@@ -47,8 +47,10 @@ Single progress and violation tracker. Detailed evidence belongs in Exhibits, no
   classes to `SubjectDistanceSpace` / `SubjectRelocation`, result types to `SubjectPlacement` / `SubjectPick`, and viewport
   picking to `PickSubjects`. Added the `SpatialEditable` concept and `PlacementGizmo` adapters with compile-time API checks.
   The active Everest viewport now routes selected Geometry, Particle, FluidPlume, SpatialNode, RigidBody, ThermalBody, and
-  ChemicalVessel transforms through the shared gizmo, including profile-revision updates and cancel. Broader `Occupant*`/`Frame`
-  cleanup, facetspace resolution, and collision export remain open.
+  ChemicalVessel transforms through the shared gizmo, including profile-revision updates and cancel. Facetspace paths now derive
+  from the configured archive stem; `SceneSubjectPlacement` exports finite, bounded static triangle meshes, and Everest installs them
+  as fixed physics colliders while suppressing the matching coarse AABBs. `SceneGeometryValidation` passes 29/29, including path and
+  triangle-budget checks. Broader `Occupant*`/`Frame` vocabulary cleanup remains open.
 - Started Phase 4 with `Frontier/Engine/Foundation/Curves/CurveSpace.h`: scalar linear, clamped Hermite, monotonic PCHIP,
   validated `.curvespace` serialization, and fixed-size baked LUTs. `CurveSpaceValidation` passes 26 checks with GCC 12.2.
 - Added the declarative `VisualEffectProfile`/`EffectSpace` `.effectspace` schema with spatial and replication profiles;
