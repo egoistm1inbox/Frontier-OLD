@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Frontier · ReSTIR PT Enhanced — CandidateEvidenceFit & Project-Zero Editor</title>
+  <link rel="stylesheet" href="/src/Style/ProjectZero.css">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,100..1000;1,9..40,100..1000&display=swap" rel="stylesheet">
+</head>
+<body>
+  <div id="app"></div>
+
+  <script type="module">
+    import { Application } from './src/App.js';
+    window.addEventListener('DOMContentLoaded', () => {
+      try {
+        window.__FRONTIER_APP__ = new Application();
+      } catch (err) {
+        console.error("Failed to initialize Frontier Application:", err);
+        const appElem = document.getElementById("app");
+        if (appElem) {
+          appElem.innerHTML = `
+            <div style="padding: 40px; color: #ef4444; font-family: monospace; background: #0c0c0e; height: 100vh;">
+              <h2>Frontier Engine Initialization Notice</h2>
+              <p style="margin-top: 12px; color: #a1a1aa;">${err.message}</p>
+              <pre style="margin-top: 20px; color: #71717a;">${err.stack || ""}</pre>
+            </div>
+          `;
+        }
+      }
+    });
+  </script>
+</body>
+</html>
